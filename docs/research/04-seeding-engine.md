@@ -1,4 +1,4 @@
-# Build-time data seeding engine (v0 — to iterate)
+# Build-time data seeding engine
 
 Bridges the variability model (many scenarios, no code-per-scenario) with the dataset substrate (`data/`) and the eval contract (`03`).
 
@@ -15,7 +15,7 @@ Bridges the variability model (many scenarios, no code-per-scenario) with the da
 ## Inputs
 
 - **Base substrate** (`data/world/*`, `data/personas/*` base packs) — durable org + NPC identities. Read-only to the engine.
-- **Archetype template** (`data/templates/<archetype>.json`) — `invariants` + typed `slots` (with sampling domains) + `eval_shapes`. All data.
+- **Archetype template** (`data/templates/<archetype>.json`) — `invariants` + typed `slots` (sampling domains + a small declarative inter-slot constraint set — ref equality/inequality/membership, resolved by rejection sampling; no Turing-complete DSL) + `eval_shapes`. All data.
 - **Seed** (int) — the only source of variability.
 
 ## Pipeline (5 stages)
@@ -45,6 +45,7 @@ Weights come from the template; the projector validates they sum to 1.0.
 - **Only seeded randomness.** No wall-clock / ambient RNG at generate time; every draw comes from the seeded PRNG.
 - **Provenance pinned.** Manifest records `(template_id, generator_version, seed, substrate_hash)` + a content hash over emitted files. Re-running the engine reproduces byte-identical instances.
 - **Runtime untouched.** The kernel consumes a frozen instance; `02`'s single-writer + one-queue determinism is unaffected.
+- **Instances are immutable; substrate pinned.** A frozen instance pins its `substrate_hash`; a later base change never mutates it. Regeneration is an explicit opt-in that emits a *new* instance under the new substrate; a drift report lists instances lagging current substrate.
 
 ## Validity gate (keeps generated scenarios defensible)
 
@@ -53,6 +54,7 @@ Weights come from the template; the projector validates they sum to 1.0.
 - **Non-trivial-ceiling** — a "busy/lazy" agent (messages only, no real deltas) scores ~0; else reject.
 - **Reject → resample** with the next seed; **log every rejection** — never silently drop coverage.
 - Reference solvers may be LLM agents, but only their **score** (a deterministic check) gates; generation itself is rule-based, so reproducibility holds.
+- **Gate-verdict cache:** the verdict is a pure function of `(template_id, seed, substrate_hash, generator_version)`; cache it under that key so re-runs skip the solver.
 
 ## Where the LLM does / does not appear
 
@@ -82,8 +84,3 @@ data/templates/    # archetype templates (data)
 
 CLI verbs extend `02`'s operator surface: `generate <archetype> --seed N` · `validate <instance>` · `freeze <instance>`.
 
-## Open questions
-
-- Reference-solver cost: cache the gate result per `(template, seed)` so it isn't re-run on every generation.
-- Slot constraint language: how rich — simple typed domains, or inter-slot constraints ("holder ≠ agent's own report", "distractors share the critical project")?
-- Substrate versioning: if a base persona changes, do frozen instances pin the old `substrate_hash` or regenerate against the new one?

@@ -1,0 +1,60 @@
+{
+  "_catalog": "action-space",
+  "_note": "The agent's entire interface to the world. Every action is one event that changes the world; add a verb by adding an entry here.",
+
+  "classes": {
+    "observe": "zero-duration, no mutation; returns a view scoped to the agent. Does not move the clock.",
+    "mutate":  "zero-duration; synchronous state change + immediate ack; may schedule follow-up events. Does not move the clock.",
+    "advance": "carries a duration; releases the clock to now + duration, firing all due events in time order. The only class that moves time."
+  },
+
+  "_write_policy": "No action can write derived or graded fields (e.g. blockers.*.surfaced, tasks.*.blocked_by, decision correctness). Those change only through the world's own rules or an NPC reveal — the anti-gaming backbone.",
+
+  "actions": [
+    { "id": "read_inbox",     "class": "observe", "args": {}, "reads": "email scoped to agent", "returns": "unread + recent emails" },
+    { "id": "read_channel",   "class": "observe", "args": { "channel": "id" }, "reads": "chat[channel] if member", "returns": "recent messages" },
+    { "id": "get_calendar",   "class": "observe", "args": {}, "reads": "calendar scoped to agent", "returns": "upcoming events" },
+    { "id": "get_tasks",      "class": "observe", "args": { "project": "id?" }, "reads": "tasks scoped to view", "returns": "tasks + status + dependencies" },
+    { "id": "read_doc",       "class": "observe", "args": { "doc": "id" }, "reads": "docs[doc]", "returns": "doc body" },
+    { "id": "get_people",     "class": "observe", "args": {}, "reads": "org scoped to view", "returns": "people + roles + reporting lines" },
+    { "id": "get_transcript", "class": "observe", "args": { "meeting": "id" }, "reads": "transcripts[meeting]", "returns": "meeting transcript" },
+
+    { "id": "send_message", "class": "mutate", "args": { "to": "id|channel", "body": "text", "refs": "[id]?" },
+      "effect": "append message to a chat channel",
+      "emits": "npc_reply at now + the persona's response_delay; the body is mapped to one intent",
+      "pre": "channel exists and agent is a member, or a DM to a known person",
+      "_note": "refs are optional structured pointers (e.g. a blocker id) the grader reads deterministically, without trusting the prose" },
+
+    { "id": "send_email", "class": "mutate", "args": { "to": "id", "subject": "text", "body": "text", "refs": "[id]?" },
+      "effect": "append email", "emits": "npc_reply at now + the persona's response_delay" },
+
+    { "id": "create_task", "class": "mutate", "args": { "project": "id", "title": "text", "owner": "id", "due": "offset?" },
+      "effect": "append task (status = todo)" },
+
+    { "id": "update_task", "class": "mutate", "args": { "task": "id", "set": { "status?": "", "owner?": "", "due?": "", "priority?": "" } },
+      "effect": "patch allowed task fields only",
+      "_note": "status/owner/due/priority are writable; blocked_by is DERIVED and not writable — editing status does not clear a blocker (touches no graded field)" },
+
+    { "id": "book_meeting", "class": "mutate", "args": { "title": "text", "attendees": "[id]", "at": "offset", "duration": "mins" },
+      "effect": "append calendar event", "emits": "meeting_start at the event time" },
+
+    { "id": "create_doc", "class": "mutate", "args": { "title": "text", "body": "text" },
+      "effect": "append doc (a free-text artifact eligible for extraction)" },
+
+    { "id": "update_doc", "class": "mutate", "args": { "doc": "id", "body": "text" }, "effect": "replace doc body" },
+
+    { "id": "record_decision", "class": "mutate",
+      "args": { "about": "id", "type": "enum", "action": "enum?", "new_date": "offset?", "owner": "id?", "rationale": "text?" },
+      "effect": "write a structured decision",
+      "_note": "the reward-bearing structured action — grading reads these fields directly; prefer it over free-text docs so scoring reads structure" },
+
+    { "id": "wait", "class": "advance", "args": { "duration": "mins|until_offset" },
+      "effect": "release the clock to now + duration; the next-event jump fires all due events in time order",
+      "_note": "the canonical clock-release; carries no mutation of its own" },
+
+    { "id": "attend_meeting", "class": "advance", "args": { "meeting": "id" },
+      "effect": "release the clock across the meeting window",
+      "emits": "transcript appended at meeting end",
+      "pre": "agent is an attendee and now is within the meeting window" }
+  ]
+}

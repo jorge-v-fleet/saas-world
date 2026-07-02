@@ -1,4 +1,4 @@
-# Architecture proposal (v0 — to iterate)
+# Architecture proposal
 
 ## Core stance
 
@@ -46,7 +46,7 @@
 - Each coworker acts by itself through three event flavors, all on the same queue:
   - **Scripted** — scenario timeline (`designer pushes mockups @ Tue 14:00`).
   - **Reactive** — replies to the agent at `now + realistic_delay`.
-  - **Autonomous** — a recurring **self-scheduled wake-up**: on fire, the NPC re-plans against its goals, mutates state, and schedules its *next* wake-up. This recurring self-reschedule is what gives each coworker an independent tempo — no background loop needed.
+  - **Autonomous** — a recurring **self-scheduled wake-up** (persona `wakeup_cadence`, a bounded heartbeat: ≤ one re-plan per window; escalation triggers may wake early): on fire, the NPC re-plans against its goals, mutates state, and schedules its *next* wake-up. This recurring self-reschedule is what gives each coworker an independent tempo — no background loop needed.
 - **Why not a free-running/real-time clock:** it would recouple sim-time to wall-clock and destroy determinism (the brief forbids this). Same seeds + one event queue → identical interleaving → **replayable, stable grading**.
 
 ## What advances when
@@ -96,10 +96,3 @@
   Scenario (data) ─▶ seeds State · registers NPC personas ·
                      schedules background events · defines eval ground truth
 ```
-
-## Open questions (for next pass)
-
-- Which actions carry a duration (release the clock) vs. are instantaneous — and can the agent ever be interrupted mid-action?
-- NPC wake-up cadence: fixed interval per persona, goal-triggered, or event-driven only? Cap re-planning cost per sim-hour.
-- Snapshot/replay for deterministic eval reruns.
-- NPC reply determinism (seed/temperature, or cache) for stable grading.

@@ -7,6 +7,7 @@ Scoped to the **CTO branch** for now; the rest of the org and future domains ext
 
 - `world/org.json` — whole company as data; `tier` gates who is live.
 - `world/company.json` — company identity + stage + reserved future-module seams.
+- `actions.json` — the agent's action space (verbs, args, clock class, effects); the only way the world is mutated.
 - `personas/<npc>.json` — per-NPC **base** pack (durable identity / voice / scope / behavior).
 - `templates/<archetype>.json` — reusable scenario archetype (assumptions + variable slots + eval shapes), with a companion `.md` that explains it in plain language.
 - `scenarios/<name>/` — a concrete scenario: `seed` (projects·tasks·blockers·surfaces), `personas.overlay`, `timeline`, `eval`, plus a `README.md` summarizing it for humans.
