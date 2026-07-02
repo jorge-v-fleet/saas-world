@@ -1,7 +1,4 @@
-"""WorldState — namespaced world model. Mutated only via apply(); reads are stable between events.
-
-Implement using: deltas.apply_delta, guard.check_write_allowed, schema.validate_path.
-"""
+"""WorldState — namespaced world model. Mutated only via apply(); reads are stable between events."""
 
 from __future__ import annotations
 

@@ -10,7 +10,7 @@ def bind_effect(
 ) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     """Return (deltas, follow_up_events) for a catalog entry bound with args at sim-time `now`.
 
-    Follow-ups are event specs (e.g. an npc_reply at now+delay); Wave 1 has no NPC, so most
-    verbs return no follow-ups. `wait` yields no deltas — the clock release happens in the API.
+    Follow-ups are event specs (e.g. a reply scheduled at now+delay). `wait` yields no deltas —
+    its clock release happens in the API layer.
     """
     raise NotImplementedError

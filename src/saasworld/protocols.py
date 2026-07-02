@@ -1,4 +1,4 @@
-"""Structural interfaces so each system can be tested in isolation with fakes."""
+"""Structural interfaces that decouple the systems from each other."""
 
 from __future__ import annotations
 
@@ -10,7 +10,7 @@ Delta = dict[str, Any]  # {op, path, value?}
 
 
 class StateWriter(Protocol):
-    """What the Kernel needs from World State (inject a fake in kernel tests)."""
+    """The subset of the world state the Kernel depends on."""
 
     def apply(self, deltas: list[Delta], source: str) -> None: ...
     def read(self, path: str) -> Any: ...
@@ -19,7 +19,7 @@ class StateWriter(Protocol):
 
 
 class KernelProto(Protocol):
-    """What the Tool API needs from the Kernel (inject a fake in toolapi tests)."""
+    """The subset of the Kernel the Tool API depends on."""
 
     def now(self) -> int: ...
     def schedule(

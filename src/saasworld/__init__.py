@@ -1,3 +1,3 @@
-"""saasworld — PM-first-week simulation environment (Wave 1 core)."""
+"""saasworld — PM-first-week simulation environment."""
 
 __version__ = "0.1.0"

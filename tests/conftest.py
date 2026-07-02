@@ -1,4 +1,4 @@
-"""Shared fixtures + test doubles. Fakes implement the protocols so each system tests in isolation."""
+"""Shared fixtures and lightweight test doubles."""
 
 from __future__ import annotations
 
@@ -24,7 +24,7 @@ def update_golden(request: pytest.FixtureRequest) -> bool:
 
 
 class FakeState:
-    """StateWriter double — records applied deltas; supports snapshot/restore."""
+    """In-memory world-state stand-in that records applied deltas."""
 
     def __init__(self) -> None:
         self.applied: list[tuple[list[dict[str, Any]], str]] = []
@@ -45,7 +45,7 @@ class FakeState:
 
 
 class FakeKernel:
-    """KernelProto double — records scheduled events; controllable now()."""
+    """In-memory Kernel stand-in that records scheduled events."""
 
     def __init__(self) -> None:
         self.t = 0
@@ -83,8 +83,7 @@ def fake_kernel() -> FakeKernel:
 
 
 @pytest.fixture
-def client():  # type: ignore[no-untyped-def]
-    """Real app via in-process TestClient (no port). Red until create_app() is implemented."""
+def client():
     from fastapi.testclient import TestClient
 
     from saasworld.api.app import create_app

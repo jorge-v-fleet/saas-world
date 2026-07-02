@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-# core partitions (on in Wave 1)
+# core partitions (enabled)
 CORE_PARTITIONS = (
     "org",
     "projects",
@@ -16,7 +16,7 @@ CORE_PARTITIONS = (
     "decisions",
     "messages",
 )
-# reserved partitions (off in Wave 1)
+# reserved partitions (disabled)
 RESERVED_PARTITIONS = ("cust", "fin", "seas")
 
 

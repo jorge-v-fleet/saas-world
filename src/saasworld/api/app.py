@@ -1,12 +1,7 @@
-"""FastAPI app holding ONE Kernel + WorldState (single writer, one worker).
+"""FastAPI app exposing the Tool API over JSON-RPC.
 
-Wire in create_app():
-  - state = WorldState(load_bootstrap(...))
-  - kernel = Kernel(state)
-  - catalog = load_catalog(data/actions.json)
-  - POST /rpc  -> rpc.dispatch(kernel, state, catalog, method, params); serialize requests
-                   through the kernel (a lock) to preserve single-writer determinism.
-  - GET  /health -> {"ok": true}
+Holds a single Kernel + WorldState; requests are serialized through the kernel so single-writer
+ordering is preserved. `POST /rpc` for actions, `GET /health` for liveness.
 """
 
 from __future__ import annotations
