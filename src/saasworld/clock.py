@@ -10,8 +10,10 @@ class SimClock:
         self._now = t0
 
     def now(self) -> int:
-        raise NotImplementedError
+        return self._now
 
     def advance_to(self, t: int) -> None:
         """Move the clock forward to t; t must be >= now (raise otherwise)."""
-        raise NotImplementedError
+        if t < self._now:
+            raise ValueError(f"cannot move clock backward: {t} < {self._now}")
+        self._now = t

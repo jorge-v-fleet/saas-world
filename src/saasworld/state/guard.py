@@ -2,7 +2,10 @@
 
 from __future__ import annotations
 
+from fnmatch import fnmatchcase
+
 # Glob-style denied paths; only source == "system" may write these.
+# Ids are dot-free, so `*` covers exactly one dotted segment (root.<id>.leaf).
 DENIED_PATHS = (
     "blockers.*.surfaced",
     "tasks.*.blocked_by",
@@ -10,6 +13,18 @@ DENIED_PATHS = (
 )
 
 
+def _matches(pattern: str, path: str) -> bool:
+    """Glob match where each `*` covers exactly one dotted segment."""
+    pat_segs, path_segs = pattern.split("."), path.split(".")
+    if len(pat_segs) != len(path_segs):
+        return False
+    return all(fnmatchcase(seg, pat) for pat, seg in zip(pat_segs, path_segs, strict=True))
+
+
 def check_write_allowed(path: str, source: str) -> None:
     """Raise PermissionError if a non-system `source` writes a denied path."""
-    raise NotImplementedError
+    if source == "system":
+        return
+    for pattern in DENIED_PATHS:
+        if _matches(pattern, path):
+            raise PermissionError(f"source {source!r} may not write denied path {path!r}")

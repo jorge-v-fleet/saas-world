@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import heapq
 from dataclasses import dataclass
 from typing import Any
 
@@ -23,11 +24,14 @@ class EventQueue:
         self._heap: list[tuple[int, int, Event]] = []  # (sim_time, seq, event)
 
     def push(self, event: Event) -> None:
-        raise NotImplementedError
+        heapq.heappush(self._heap, (event.sim_time, event.seq, event))
 
     def pop_due(self, until: int) -> list[Event]:
         """Pop every event with sim_time <= until, returned in (sim_time, seq) order."""
-        raise NotImplementedError
+        due: list[Event] = []
+        while self._heap and self._heap[0][0] <= until:
+            due.append(heapq.heappop(self._heap)[2])
+        return due
 
     def __len__(self) -> int:
         return len(self._heap)

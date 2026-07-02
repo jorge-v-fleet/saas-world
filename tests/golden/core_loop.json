@@ -1,0 +1,250 @@
+{
+  "final": {
+    "blockers": {
+      "b1": {
+        "surfaced": false
+      }
+    },
+    "calendar": [],
+    "chat": {
+      "chan.checkout": {
+        "log": [],
+        "members": [
+          "org.pm_a",
+          "org.fe_a1"
+        ]
+      }
+    },
+    "decisions": [
+      {
+        "about": "proj.checkout",
+        "action": "reschedule",
+        "new_date": null,
+        "owner": null,
+        "rationale": null,
+        "type": "gonogo"
+      }
+    ],
+    "docs": [],
+    "email": [],
+    "messages": [
+      {
+        "body": "status?",
+        "refs": null,
+        "to": "chan.checkout"
+      }
+    ],
+    "org": {
+      "org.ae_1": {
+        "name": null,
+        "title": "Account Executive"
+      },
+      "org.ae_2": {
+        "name": null,
+        "title": "Account Executive"
+      },
+      "org.be_b2": {
+        "name": "Priya Nair",
+        "title": "Backend Engineer"
+      },
+      "org.be_b3": {
+        "name": "Diego Santos",
+        "title": "Backend Engineer"
+      },
+      "org.bizops": {
+        "name": null,
+        "title": "BizOps"
+      },
+      "org.ceo": {
+        "name": null,
+        "title": "CEO"
+      },
+      "org.cfo": {
+        "name": null,
+        "title": "CFO"
+      },
+      "org.coo": {
+        "name": null,
+        "title": "COO"
+      },
+      "org.cs_1": {
+        "name": null,
+        "title": "CS Support"
+      },
+      "org.cs_2": {
+        "name": null,
+        "title": "CS Support"
+      },
+      "org.cs_mgr_1": {
+        "name": null,
+        "title": "Customer Support Manager"
+      },
+      "org.cto": {
+        "name": "Rohit Malhotra",
+        "title": "CTO"
+      },
+      "org.designer": {
+        "name": "Dana Lee",
+        "title": "Product Designer"
+      },
+      "org.fe_a1": {
+        "name": "Sam Torres",
+        "title": "Frontend Engineer"
+      },
+      "org.fs_b1": {
+        "name": "Leo Kim",
+        "title": "Fullstack Engineer"
+      },
+      "org.head_sales": {
+        "name": null,
+        "title": "Head of Sales"
+      },
+      "org.pm_a": {
+        "name": "Alex Rivera",
+        "title": "Product Manager"
+      },
+      "org.pm_b": {
+        "name": "Nadia Okafor",
+        "title": "Product Manager"
+      },
+      "org.revops": {
+        "name": null,
+        "title": "Revenue Ops Analyst"
+      },
+      "org.sdr_1": {
+        "name": null,
+        "title": "SDR"
+      },
+      "org.sdr_2": {
+        "name": null,
+        "title": "SDR"
+      },
+      "org.sdr_3": {
+        "name": null,
+        "title": "SDR"
+      },
+      "org.sdr_4": {
+        "name": null,
+        "title": "SDR"
+      },
+      "org.sdr_5": {
+        "name": null,
+        "title": "SDR"
+      },
+      "org.sdr_mgr": {
+        "name": null,
+        "title": "SDR Manager"
+      },
+      "org.sre": {
+        "name": "Mika Anders",
+        "title": "SRE / DevOps Engineer"
+      }
+    },
+    "projects": {
+      "proj.checkout": {
+        "name": "Checkout revamp",
+        "owner": "org.pm_a"
+      }
+    },
+    "tasks": {
+      "t1": {
+        "owner": "org.fe_a1",
+        "project": "proj.checkout",
+        "status": "in_progress",
+        "title": "Checkout UI"
+      },
+      "t2": {
+        "owner": "org.fe_a1",
+        "project": "proj.checkout",
+        "status": "todo",
+        "title": "Payments API"
+      }
+    }
+  },
+  "log": [
+    {
+      "actor": "agent",
+      "caused_by": null,
+      "kind": "create_task",
+      "payload": {
+        "deltas": [
+          {
+            "op": "set",
+            "path": "tasks.t2",
+            "value": {
+              "owner": "org.fe_a1",
+              "project": "proj.checkout",
+              "status": "todo",
+              "title": "Payments API"
+            }
+          }
+        ],
+        "follow_ups": []
+      },
+      "seq": 1,
+      "sim_time": 0
+    },
+    {
+      "actor": "agent",
+      "caused_by": null,
+      "kind": "send_message",
+      "payload": {
+        "deltas": [
+          {
+            "op": "append",
+            "path": "messages",
+            "value": {
+              "body": "status?",
+              "refs": null,
+              "to": "chan.checkout"
+            }
+          }
+        ],
+        "follow_ups": []
+      },
+      "seq": 2,
+      "sim_time": 0
+    },
+    {
+      "actor": "agent",
+      "caused_by": null,
+      "kind": "update_task",
+      "payload": {
+        "deltas": [
+          {
+            "op": "set",
+            "path": "tasks.t1.status",
+            "value": "in_progress"
+          }
+        ],
+        "follow_ups": []
+      },
+      "seq": 3,
+      "sim_time": 0
+    },
+    {
+      "actor": "agent",
+      "caused_by": null,
+      "kind": "record_decision",
+      "payload": {
+        "deltas": [
+          {
+            "op": "append",
+            "path": "decisions",
+            "value": {
+              "about": "proj.checkout",
+              "action": "reschedule",
+              "new_date": null,
+              "owner": null,
+              "rationale": null,
+              "type": "gonogo"
+            }
+          }
+        ],
+        "follow_ups": []
+      },
+      "seq": 4,
+      "sim_time": 0
+    }
+  ]
+}

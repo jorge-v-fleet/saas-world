@@ -19,7 +19,7 @@ class Kernel:
         self._seq = 0
 
     def now(self) -> int:
-        raise NotImplementedError
+        return self.clock.now()
 
     def schedule(
         self,
@@ -30,12 +30,28 @@ class Kernel:
         caused_by: int | None = None,
     ) -> int:
         """Assign a monotonic seq, enqueue the event, return its seq."""
-        raise NotImplementedError
+        self._seq += 1
+        self.queue.push(Event(self._seq, sim_time, actor, kind, payload, caused_by))
+        return self._seq
 
     def advance_until(self, t: int) -> list[Event]:
         """Pop + apply every due event (sim_time <= t) in order; move the clock to t."""
-        raise NotImplementedError
+        applied = self.queue.pop_due(t)
+        for event in applied:
+            self.apply(event)
+        self.clock.advance_to(t)
+        return applied
 
     def apply(self, event: Event) -> None:
         """Bind the event's effect -> deltas -> state.apply(source=actor); enqueue follow-ups."""
-        raise NotImplementedError
+        deltas = event.payload.get("deltas", [])
+        if deltas:
+            self.state.apply(deltas, source=event.actor)
+        for fu in event.payload.get("follow_ups", []):
+            self.schedule(
+                event.sim_time + fu["delay"],
+                fu["actor"],
+                fu["kind"],
+                fu.get("payload", {}),
+                caused_by=event.seq,
+            )
