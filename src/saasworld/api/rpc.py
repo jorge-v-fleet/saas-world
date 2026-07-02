@@ -142,6 +142,11 @@ def _action(
     if verb == "create_task":
         args = {**args, "auto_id": f"t{len(state.read('tasks') or {}) + 1}"}
     deltas, follow_ups = bind_effect(entry, args, kernel.now())
+    if verb == "send_message" and args.get("intent"):
+        # Intent seam: a structured intent wakes the recipient's decision core at `now`.
+        follow_ups = [*follow_ups, {"delay": 0, "actor": AGENT, "kind": "npc_react",
+                      "payload": {"npc": args["to"], "intent": args["intent"],
+                                  "args": args, "sender": AGENT}}]
     for d in deltas:  # dry-run the guard so a denied write never enters the queue
         try:
             check_write_allowed(d["path"], "agent")
@@ -150,7 +155,10 @@ def _action(
     seq = kernel.schedule(
         kernel.now(), "agent", verb, {"deltas": deltas, "follow_ups": follow_ups}
     )
-    applied = kernel.advance_until(kernel.now())  # zero-duration: apply without moving time
+    # Zero-duration: apply without moving time, draining any same-`now` cascade (e.g. npc_react).
+    applied = kernel.advance_until(kernel.now())
+    while (more := kernel.advance_until(kernel.now())):
+        applied = [*applied, *more]
     return _observation(
         kernel.now(), {"seq": seq, "verb": verb}, [event_view(e) for e in applied]
     )
@@ -179,4 +187,10 @@ def dispatch(
     if method == "load_bootstrap":
         state.restore(load_bootstrap(params.get("name", "minimal")))
         return {"result": {"ok": True, "name": params.get("name", "minimal")}}
+    if method == "load_scenario":
+        from saasworld.scenario.loader import load
+
+        loaded = load(params.get("path") or params.get("name", ""), kernel)
+        return {"result": {"ok": True, "scenario": loaded.scenario_id,
+                           "dataset_version": loaded.dataset_version}}
     return _err(ERR_UNKNOWN_METHOD, f"unknown method {method!r}")

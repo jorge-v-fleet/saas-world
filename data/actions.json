@@ -19,9 +19,10 @@
     { "id": "get_people",     "class": "observe", "args": {}, "reads": "org scoped to view", "returns": "people + roles + reporting lines" },
     { "id": "get_transcript", "class": "observe", "args": { "meeting": "id" }, "reads": "transcripts[meeting]", "returns": "meeting transcript" },
 
-    { "id": "send_message", "class": "mutate", "args": { "to": "id|channel", "body": "text", "refs": "[id]?" },
+    { "id": "send_message", "class": "mutate", "args": { "to": "id|channel", "body": "text", "refs": "[id]?", "intent": "enum?" },
       "effect": [ { "op": "append", "path": "messages", "value": { "to": "$to", "body": "$body", "refs": "$refs" } } ],
       "_effect": "append message to a chat channel",
+      "_intent": "optional structured intent (one of the recipient's allowed_intents); when present, emits npc_react at now so the coworker's decision core runs. Absent -> plain message, no reaction.",
       "emits": "npc_reply at now + the persona's response_delay; the body is mapped to one intent",
       "pre": "channel exists and agent is a member, or a DM to a known person",
       "_note": "refs are optional structured pointers (e.g. a blocker id) the grader reads deterministically, without trusting the prose" },

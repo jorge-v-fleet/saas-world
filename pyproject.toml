@@ -10,6 +10,7 @@ requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.110",
   "uvicorn>=0.29",
+  "duckdb>=1.0",        # trajectory query index (rebuildable from the JSONL log)
 ]
 
 [project.optional-dependencies]
@@ -39,6 +40,10 @@ markers = [
   "golden: determinism / replay golden tests",
   "property: hypothesis property-based tests",
   "validation: data/actions.json catalog validation",
+  "content: content-addressed hashing of scenario data",
+  "scenario: Scenario Loader / frozen-instance tests",
+  "npc: NPC engine (rule-based decision core + reply rendering)",
+  "observability: Trajectory Store (persist / replay / POV / query)",
 ]
 
 [tool.ruff]

@@ -2,11 +2,17 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Any
 
 from .clock import SimClock
 from .events import Event, EventQueue
 from .protocols import StateWriter
+
+# A handler owns an event kind's effect and returns the deltas it applied.
+Handler = Callable[["Kernel", Event], list[dict[str, Any]]]
+# A sink observes each applied event with the deltas that were written for it.
+Sink = Callable[[Event, list[dict[str, Any]]], None]
 
 
 class Kernel:
@@ -17,6 +23,16 @@ class Kernel:
         self.queue = EventQueue()
         self.state = state
         self._seq = 0
+        self._handlers: dict[str, Handler] = {}
+        self._sinks: list[Sink] = []
+
+    def register(self, kind: str, handler: Handler) -> None:
+        """Route events of `kind` to a custom handler instead of the default delta path."""
+        self._handlers[kind] = handler
+
+    def add_sink(self, sink: Sink) -> None:
+        """Observe every applied event (e.g. to persist a trajectory). Sinks never mutate state."""
+        self._sinks.append(sink)
 
     def now(self) -> int:
         return self.clock.now()
@@ -43,15 +59,21 @@ class Kernel:
         return applied
 
     def apply(self, event: Event) -> None:
-        """Bind the event's effect -> deltas -> state.apply(source=actor); enqueue follow-ups."""
-        deltas = event.payload.get("deltas", [])
-        if deltas:
-            self.state.apply(deltas, source=event.actor)
-        for fu in event.payload.get("follow_ups", []):
-            self.schedule(
-                event.sim_time + fu["delay"],
-                fu["actor"],
-                fu["kind"],
-                fu.get("payload", {}),
-                caused_by=event.seq,
-            )
+        """Route to a registered handler or the default delta path; then notify sinks."""
+        handler = self._handlers.get(event.kind)
+        if handler is not None:
+            applied = handler(self, event)
+        else:
+            applied = event.payload.get("deltas", [])
+            if applied:
+                self.state.apply(applied, source=event.actor)
+            for fu in event.payload.get("follow_ups", []):
+                self.schedule(
+                    event.sim_time + fu["delay"],
+                    fu["actor"],
+                    fu["kind"],
+                    fu.get("payload", {}),
+                    caused_by=event.seq,
+                )
+        for sink in self._sinks:
+            sink(event, applied)

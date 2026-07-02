@@ -1,0 +1,287 @@
+{
+  "final": {
+    "blockers": {
+      "blocker": {
+        "psp_cert": {
+          "affects": "task.psp_integration",
+          "cert_ready": "after(launch)",
+          "known_to": [
+            "org.be_b2"
+          ],
+          "severity": "launch_blocking",
+          "summary": "PSP live account isn't PCI-certified until after the launch; live payments would fail if shipped on time",
+          "surfaced": true
+        }
+      }
+    },
+    "calendar": [
+      {
+        "attendees": [
+          "org.pm_a",
+          "org.fe_a1",
+          "org.be_b2",
+          "org.cto"
+        ],
+        "id": "evt.standup",
+        "start": "D1T09:30",
+        "title": "Checkout standup"
+      }
+    ],
+    "chat": {
+      "chan.checkout": {
+        "members": [
+          "org.pm_a",
+          "org.fe_a1",
+          "org.be_b2",
+          "org.pm_b",
+          "org.cto"
+        ],
+        "messages": []
+      }
+    },
+    "decisions": [
+      {
+        "about": "proj.checkout",
+        "action": "reschedule",
+        "new_date": null,
+        "owner": null,
+        "rationale": null,
+        "type": "gonogo"
+      }
+    ],
+    "docs": [
+      {
+        "claims_status": "on_track",
+        "id": "doc.launch_plan",
+        "title": "Checkout launch plan"
+      }
+    ],
+    "email": [
+      {
+        "body": "Great to have you. Checkout is our big Q1 bet and it launches Friday. Standup's at 9:30 \u2014 jump in.",
+        "from": "org.cto",
+        "id": "email.welcome",
+        "subject": "Welcome \u2014 checkout ships Friday!",
+        "to": "org.pm_a"
+      }
+    ],
+    "messages": [
+      {
+        "body": "Is the PSP ready for Friday?",
+        "refs": [
+          "task.psp_integration"
+        ],
+        "to": "org.be_b2"
+      },
+      {
+        "body": "Priya Nair: heads up \u2014 Sandbox works, but the live account isn't PCI-certified until Mar 13; live payments will fail before then.",
+        "from": "org.be_b2",
+        "kind": "reveal",
+        "refs": [
+          "blocker.psp_cert"
+        ],
+        "to": "org.pm_a"
+      }
+    ],
+    "org": {
+      "org.be_b2": {
+        "name": "Priya Nair",
+        "reports_to": "org.pm_b",
+        "title": "Backend Engineer"
+      },
+      "org.be_b3": {
+        "name": "Diego Santos",
+        "reports_to": "org.pm_b",
+        "title": "Backend Engineer"
+      },
+      "org.cto": {
+        "name": "Rohit Malhotra",
+        "reports_to": "org.ceo",
+        "title": "CTO"
+      },
+      "org.designer": {
+        "name": "Dana Lee",
+        "reports_to": "org.cto",
+        "title": "Product Designer"
+      },
+      "org.fe_a1": {
+        "name": "Sam Torres",
+        "reports_to": "org.pm_a",
+        "title": "Frontend Engineer"
+      },
+      "org.fs_b1": {
+        "name": "Leo Kim",
+        "reports_to": "org.pm_b",
+        "title": "Fullstack Engineer"
+      },
+      "org.pm_a": {
+        "name": "Alex Rivera",
+        "reports_to": "org.cto",
+        "title": "Product Manager"
+      },
+      "org.pm_b": {
+        "name": "Nadia Okafor",
+        "reports_to": "org.cto",
+        "title": "Product Manager"
+      },
+      "org.sre": {
+        "name": "Mika Anders",
+        "reports_to": "org.cto",
+        "title": "SRE / DevOps Engineer"
+      }
+    },
+    "projects": {
+      "proj": {
+        "checkout": {
+          "launch_date": "D5T17:00",
+          "launch_date_movable": true,
+          "name": "Self-serve checkout",
+          "owner": "org.pm_a",
+          "reported_status": "on_track"
+        }
+      }
+    },
+    "surfaces": {
+      "transcripts": []
+    },
+    "tasks": {
+      "task": {
+        "checkout_ui": {
+          "depends_on": [
+            "task.psp_integration"
+          ],
+          "due": "D3T17:00",
+          "owner": "org.fe_a1",
+          "project": "proj.checkout",
+          "status": "in_progress",
+          "title": "Checkout UI"
+        },
+        "launch_gonogo": {
+          "depends_on": [
+            "task.psp_integration"
+          ],
+          "due": "D5T12:00",
+          "owner": "org.pm_a",
+          "project": "proj.checkout",
+          "status": "todo",
+          "title": "Launch go/no-go"
+        },
+        "psp_integration": {
+          "due": "D3T17:00",
+          "owner": "org.be_b2",
+          "project": "proj.checkout",
+          "status": "in_progress",
+          "title": "Integrate PSP"
+        }
+      }
+    }
+  },
+  "log": [
+    {
+      "actor": "agent",
+      "caused_by": null,
+      "kind": "send_message",
+      "payload": {
+        "deltas": [
+          {
+            "op": "append",
+            "path": "messages",
+            "value": {
+              "body": "Is the PSP ready for Friday?",
+              "refs": [
+                "task.psp_integration"
+              ],
+              "to": "org.be_b2"
+            }
+          }
+        ],
+        "follow_ups": [
+          {
+            "actor": "org.pm_a",
+            "delay": 0,
+            "kind": "npc_react",
+            "payload": {
+              "args": {
+                "body": "Is the PSP ready for Friday?",
+                "intent": "ask_status",
+                "refs": [
+                  "task.psp_integration"
+                ],
+                "to": "org.be_b2"
+              },
+              "intent": "ask_status",
+              "npc": "org.be_b2",
+              "sender": "org.pm_a"
+            }
+          }
+        ]
+      },
+      "seq": 4,
+      "sim_time": 0
+    },
+    {
+      "actor": "org.pm_a",
+      "caused_by": 4,
+      "kind": "npc_react",
+      "payload": {
+        "args": {
+          "body": "Is the PSP ready for Friday?",
+          "intent": "ask_status",
+          "refs": [
+            "task.psp_integration"
+          ],
+          "to": "org.be_b2"
+        },
+        "intent": "ask_status",
+        "npc": "org.be_b2",
+        "sender": "org.pm_a"
+      },
+      "seq": 5,
+      "sim_time": 0
+    },
+    {
+      "actor": "org.be_b2",
+      "caused_by": 5,
+      "kind": "deliver_reply",
+      "payload": {
+        "reply": {
+          "fields": {
+            "fact": "Sandbox works, but the live account isn't PCI-certified until Mar 13; live payments will fail before then."
+          },
+          "kind": "reveal",
+          "refs": [
+            "blocker.psp_cert"
+          ],
+          "text": "Priya Nair: heads up \u2014 Sandbox works, but the live account isn't PCI-certified until Mar 13; live payments will fail before then."
+        },
+        "to": "org.pm_a"
+      },
+      "seq": 6,
+      "sim_time": 90
+    },
+    {
+      "actor": "agent",
+      "caused_by": null,
+      "kind": "record_decision",
+      "payload": {
+        "deltas": [
+          {
+            "op": "append",
+            "path": "decisions",
+            "value": {
+              "about": "proj.checkout",
+              "action": "reschedule",
+              "new_date": null,
+              "owner": null,
+              "rationale": null,
+              "type": "gonogo"
+            }
+          }
+        ],
+        "follow_ups": []
+      },
+      "seq": 7,
+      "sim_time": 120
+    }
+  ]
+}

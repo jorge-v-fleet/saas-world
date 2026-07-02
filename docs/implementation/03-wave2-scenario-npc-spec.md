@@ -110,6 +110,12 @@ tests/
 - A timeline background event fires during `advance`.
 - New markers (`content`, `scenario`, `npc`) green; Wave 1 markers still green; `ruff` + `mypy` clean.
 
+## As built (deltas from spec)
+
+- **`dataset_version` is validate-if-present.** The frozen `scenario.json` ships without a `dataset_version` field, so the loader always recomputes the version over instance content (`seed`+`overlay`+`timeline`+`eval`, excluding the manifest) and refuses only when the manifest *declares* one that mismatches. `LoadedScenario` always returns the computed version. (Follow-up: bake `dataset_version` into the committed instance so load is a hard integrity gate.)
+- **Same-`now` cascade drains in the mutate path**, not the kernel. `advance_until` keeps its single `pop_due` pass; the zero-duration mutate drains events scheduled at `now` so `npc_react` + the reveal fire synchronously at send time, while the delayed `deliver_reply` drains on the later `wait`. Kernel untouched.
+- **Dotted ids** (`blocker.psp_cert`, `proj.checkout`) seed into nested storage via dot-walking so eval-ground-truth paths (`blockers.blocker.psp_cert.surfaced`) resolve; channels stay whole-key addressed.
+
 ## Milestones
 
 1. `content_hash` → `-m content` green.

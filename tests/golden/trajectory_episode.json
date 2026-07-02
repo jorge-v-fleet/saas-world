@@ -1,0 +1,22 @@
+{
+  "final": {
+    "blockers": {
+      "b1": {
+        "surfaced": true
+      }
+    },
+    "chat": {
+      "checkout": {
+        "log": [
+          "status?"
+        ]
+      }
+    },
+    "tasks": {
+      "t1": {
+        "status": "in_progress"
+      }
+    }
+  },
+  "trajectory": "{\"actor\":\"agent\",\"caused_by\":null,\"delta\":[{\"op\":\"set\",\"path\":\"tasks.t1.status\",\"value\":\"todo\"}],\"kind\":\"create_task\",\"payload\":{\"deltas\":[{\"op\":\"set\",\"path\":\"tasks.t1.status\",\"value\":\"todo\"}]},\"run_id\":\"golden-run\",\"seq\":1,\"sim_time\":0}\n{\"actor\":\"agent\",\"caused_by\":null,\"delta\":[{\"op\":\"append\",\"path\":\"chat.checkout.log\",\"value\":\"status?\"}],\"kind\":\"send_message\",\"payload\":{\"deltas\":[{\"op\":\"append\",\"path\":\"chat.checkout.log\",\"value\":\"status?\"}]},\"run_id\":\"golden-run\",\"seq\":2,\"sim_time\":0}\n{\"actor\":\"system\",\"caused_by\":null,\"delta\":[{\"op\":\"set\",\"path\":\"blockers.b1.surfaced\",\"value\":true}],\"kind\":\"reveal\",\"payload\":{\"deltas\":[{\"op\":\"set\",\"path\":\"blockers.b1.surfaced\",\"value\":true}]},\"run_id\":\"golden-run\",\"seq\":3,\"sim_time\":30}\n{\"actor\":\"agent\",\"caused_by\":null,\"delta\":[{\"op\":\"set\",\"path\":\"tasks.t1.status\",\"value\":\"in_progress\"}],\"kind\":\"update_task\",\"payload\":{\"deltas\":[{\"op\":\"set\",\"path\":\"tasks.t1.status\",\"value\":\"in_progress\"}]},\"run_id\":\"golden-run\",\"seq\":4,\"sim_time\":30}\n"
+}
