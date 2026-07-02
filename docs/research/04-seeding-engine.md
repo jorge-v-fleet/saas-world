@@ -24,7 +24,7 @@ Bridges the variability model (many scenarios, no code-per-scenario) with the da
 2. **Bind** — resolve abstract slots to real substrate IDs (which `active` NPC holds the blocker, which agent-owned project is critical, who applies pressure). Only `active`-tier NPCs are eligible; chosen ones go into the manifest's `activate`.
 3. **Assemble** — materialize concrete JSON: scenario `seed` (projects/tasks/blockers/surfaces), per-NPC `overlay` (goals + `knowledge_scope` + reveal gates), `timeline`.
 4. **Project eval** — emit `eval.json` by binding each templated predicate **shape** to the resolved IDs / value-sets (mapping below). This is the coupling.
-5. **Gate + freeze** — run the validity gate; on pass, write instance + manifest with content hash + provenance `(template, seed, substrate_hash, generator_version)`.
+5. **Gate + freeze** — run the validity gate; on pass, write instance + manifest with content hash + provenance `(template_id, seed, substrate_hash, generator_version)`.
 
 ## Eval co-generation (the coupling)
 
@@ -43,7 +43,7 @@ Weights come from the template; the projector validates they sum to 1.0.
 ## Determinism & reproducibility
 
 - **Only seeded randomness.** No wall-clock / ambient RNG at generate time; every draw comes from the seeded PRNG.
-- **Provenance pinned.** Manifest records `(template_id, generator_version, seed, substrate_hash)` + a content hash over emitted files. Re-running the engine reproduces byte-identical instances.
+- **Provenance pinned.** Manifest records `(template_id, generator_version, seed, substrate_hash)` + a content hash over emitted files (`instance_hash`). Re-running the engine reproduces byte-identical instances.
 - **Runtime untouched.** The kernel consumes a frozen instance; `02`'s single-writer + one-queue determinism is unaffected.
 - **Instances are immutable; substrate pinned.** A frozen instance pins its `substrate_hash`; a later base change never mutates it. Regeneration is an explicit opt-in that emits a *new* instance under the new substrate; a drift report lists instances lagging current substrate.
 
@@ -53,8 +53,9 @@ The shared hashing primitive — used for instance provenance above and run pinn
 
 - **Canonicalize** each data file before hashing: sort keys, normalize whitespace, strip `_`-prefixed annotation fields (so doc-note edits never change a hash).
 - **Hash** each canonical file with SHA-256; a subtree hash = SHA-256 over its sorted `(path, file_hash)` pairs.
-- **`dataset_version`** = that hash applied to the whole dataset (substrate + all scenarios + action space); derived/disposable artifacts (e.g. the run index) are excluded.
-- Deterministic and machine-independent — identical content → identical `dataset_version`, anywhere. Any change to substrate, a scenario, or the action space flips it; formatting and notes do not.
+- **Named hashes** (all from the same primitive): `substrate_hash` (substrate subtree), `action_space_version` (action-space subtree), `instance_hash` (a frozen scenario's emitted files), `dataset_version` (whole dataset — substrate + all scenarios + action space; derived/disposable artifacts like the run index excluded).
+- **Two distinct roles** (see `06`): `dataset_version` is the **load-time integrity guard** (whole-dataset match); `(instance_hash, action_space_version)` is the **run comparability key** — exactly what a run depended on, so unrelated dataset edits don't fragment cohorts.
+- Deterministic and machine-independent — identical content → identical hash, anywhere. Any change to substrate, a scenario, or the action space flips `dataset_version`; formatting and notes do not.
 
 ## Validity gate (keeps generated scenarios defensible)
 

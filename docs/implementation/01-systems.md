@@ -32,6 +32,7 @@ High-level definition of what we build, distilled from `../research/`. Each syst
    - Responsibility: load a **frozen scenario instance** (`seed.json` · `personas.overlay.json` · `timeline.json` · `eval.json` + `scenario.json` manifest) emitted by the Seeding Engine, **unchanged** — seed state, per-NPC overlay, event timeline, eval ground truth. No code-per-scenario; no generation at load.
    - Interface: `load(instance) → seeds World State, registers NPCs, schedules events, hands ground truth to Evaluator`.
    - Owns/mutates: initial state only (at load).
+   - Validation: **re-hashes the dataset and checks the pinned `dataset_version` on load; refuses to run on mismatch** — a run can never silently drift from the dataset it claims (per `04` content addressing, `06` manifest).
    - Depends on: World State, NPC Engine, Kernel, Evaluator; consumes Seeding Engine output.
 
 6. **Seeding Engine (build-time)** — turns templates + seeds into frozen instances.
@@ -39,7 +40,8 @@ High-level definition of what we build, distilled from `../research/`. Each syst
    - Interface: `generate <archetype> --seed N` · `validate <instance>` · `freeze <instance>` (extends the Operator CLI).
    - Owns/mutates: writes frozen instances to `scenarios/`; reads base substrate read-only. **Never runs during a graded episode.**
    - Depends on: Data Substrate (`data/world`, `data/personas`, `data/templates`); gate may invoke reference solvers (only their deterministic *score* gates — generation itself is rule-based).
-   - Determinism: only seeded randomness; `(template, seed, substrate_hash, generator_version)` → byte-identical instance. No LLM in the generate→freeze path.
+   - Determinism: only seeded randomness; `(template_id, seed, substrate_hash, generator_version)` → byte-identical instance. No LLM in the generate→freeze path.
+   - Owns the **content-addressing primitive** (`04`): canonicalize → SHA-256 per file → subtree hashes → `dataset_version` over the whole dataset (substrate + scenarios + action space). Feeds instance provenance and run pinning (`06`).
 
 7. **Evaluator** — deterministic-first scoring, reads the trajectory.
    - Responsibility: predicate checks at checkpoints — reads the **trajectory** (event log + state-at-checkpoint reconstructed by projection, not a separate snapshot feed); state deltas carry the score. **LLM extractor (parser-only)** turns free-text artifacts into structured claims a deterministic rubric grades. No LLM judge. Injection-resistant: claims credited only if consistent with state. **Grade == replayable** (scores the same bytes we persist); re-runnable offline against a stored trajectory (re-grade without re-running the episode).
@@ -60,7 +62,7 @@ High-level definition of what we build, distilled from `../research/`. Each syst
    - Depends on: all of the above; reads the Trajectory Store for observability.
 
 10. **Trajectory Store** — persist every rollout for replay + cross-run analysis.
-   - Responsibility: write each episode as a replay-grade `trajectory.jsonl` (canonical event log + `caused_by` chain) + periodic snapshots + manifest (scenario hash, seed, agent version); maintain a **derived, rebuildable** DuckDB/SQLite index over runs for cross-trajectory queries. **Any-POV views (agent/NPC/operator/grader) reconstructed on demand** by projecting the log — never materialized. Full spec: `../research/06-trajectory-store.md`.
+   - Responsibility: write each episode as a replay-grade `trajectory.jsonl` (canonical event log + `caused_by` chain) + periodic snapshots + manifest (`scenario_id`, `seed`, `agent_version`, and two hash roles per `04`: `dataset_version` for load-time integrity, `(instance_hash, action_space_version)` as the comparability key); maintain a **derived, rebuildable** DuckDB/SQLite index over runs for cross-trajectory queries. **Any-POV views (agent/NPC/operator/grader) reconstructed on demand** by projecting the log — never materialized. Full spec: `../research/06-trajectory-store.md`.
    - Interface: `record(event)` (append), `replay(run_id)`, `project(run_id, actor, at)`, `query(...)`.
    - Owns/mutates: `runs/` files + the derived index; reads the canonical event log.
    - Depends on: Kernel event log + World State snapshots (systems 1, 2) — the **single capture point**. Read by the Evaluator (7), which appends its checkpoint/score records; consumed by Operator/Observability (9).
