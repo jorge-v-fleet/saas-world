@@ -1,0 +1,70 @@
+# ── Python bytecode & build artifacts ──────────────────────────────
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+build/
+dist/
+*.egg-info/
+*.egg
+.eggs/
+wheels/
+share/python-wheels/
+MANIFEST
+
+# ── Virtual environments (uv, venv, virtualenv) ────────────────────
+.venv/
+venv/
+env/
+.env
+.python-version
+
+# ── uv ─────────────────────────────────────────────────────────────
+# The lockfile (uv.lock) IS committed on purpose for reproducible installs; its cache is not.
+.uv/
+uv-cache/
+
+# ── Test / lint / type-check caches ────────────────────────────────
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.dmypy.json
+dmypy.json
+.hypothesis/
+.cache/
+
+# ── Coverage ───────────────────────────────────────────────────────
+.coverage
+.coverage.*
+coverage.xml
+htmlcov/
+*.cover
+nosetests.xml
+
+# ── Editors / IDEs ─────────────────────────────────────────────────
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+.ropeproject/
+
+# ── OS cruft ───────────────────────────────────────────────────────
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+Thumbs.db
+ehthumbs.db
+Desktop.ini
+
+# ── Jupyter / notebooks ────────────────────────────────────────────
+.ipynb_checkpoints/
+
+# ── Simulation run artifacts (derived/disposable — see docs/research/06) ──
+# Canonical trajectory JSONL + snapshots per run, plus the rebuildable index.
+runs/
+*.duckdb
+*.duckdb.wal
+index.sqlite
