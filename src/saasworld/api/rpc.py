@@ -21,6 +21,7 @@ from saasworld.state.guard import check_write_allowed
 # JSON-RPC standard + custom error codes
 ERR_UNKNOWN_METHOD = -32601
 ERR_INVALID_PARAMS = -32602
+ERR_INTERNAL = -32603
 ERR_PRECONDITION = 1001
 ERR_DENIED_WRITE = 1002
 
@@ -171,7 +172,20 @@ def _action(
 def dispatch(
     kernel: Any, state: Any, catalog: dict[str, Any], method: str, params: dict[str, Any]
 ) -> dict[str, Any]:
-    """Route a JSON-RPC method; return {"result": ...} or {"error": {code, message}}."""
+    """Route a JSON-RPC method; return {"result": ...} or {"error": {code, message}}.
+
+    Top-level guard: any unexpected handler error maps to a JSON-RPC internal error (-32603) so a
+    failure surfaces as a structured error object, never an unhandled 500 / aborted request.
+    """
+    try:
+        return _route(kernel, state, catalog, method, params)
+    except Exception as e:
+        return _err(ERR_INTERNAL, f"internal error: {type(e).__name__}")
+
+
+def _route(
+    kernel: Any, state: Any, catalog: dict[str, Any], method: str, params: dict[str, Any]
+) -> dict[str, Any]:
     params = params or {}
     if method == "action":
         return _action(kernel, state, catalog, params)

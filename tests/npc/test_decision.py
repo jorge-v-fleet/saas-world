@@ -157,3 +157,53 @@ def test_engine_ignores_unknown_npc():
     k = _FakeKernel()
     engine._npc_reply(k, _reply_event())
     assert k.applied == []
+
+
+# --- engine resilience: a parser failure degrades, never crashes or leaks ----
+
+
+class _RaisingParser:
+    """Parser stub that fails on demand (stands in for a cache miss / API error)."""
+
+    def __init__(self, *, on_parse: bool = False, on_render: bool = False) -> None:
+        self.on_parse = on_parse
+        self.on_render = on_render
+
+    def parse_intent(self, body: str, persona: Any) -> str:
+        if self.on_parse:
+            raise RuntimeError("cache miss")
+        return "ask_status"
+
+    def render_reply(self, decision: dict[str, Any], persona: Any) -> str:
+        if self.on_render:
+            raise RuntimeError("cache miss")
+        return "voiced"
+
+
+def test_engine_parse_failure_degrades_to_ack_without_crash():
+    engine = NPCEngine(parser=_RaisingParser(on_parse=True))
+    engine.register_npc(_npc())
+    k = _FakeKernel()
+    applied = engine._npc_reply(k, _reply_event())  # would normally reveal; must not raise
+    # fail CLOSED: nothing system-sourced, no reveal of the gated field
+    assert all(source != "system" for _deltas, source in k.applied)
+    assert not any(d["path"].endswith(".surfaced") for deltas, _s in k.applied for d in deltas)
+    # stays live: exactly one bare-ack message
+    assert len(k.applied) == 1
+    msg = k.applied[0][0][0]["value"]
+    assert msg["kind"] == "ack" and msg["refs"] == []
+    assert applied  # returned deltas, not a propagated exception
+
+
+def test_engine_render_failure_keeps_reveal_and_uses_fallback_text():
+    from saasworld.npc.engine import _FALLBACK_ACK
+
+    engine = NPCEngine(parser=_RaisingParser(on_render=True))
+    engine.register_npc(_npc())
+    k = _FakeKernel()
+    engine._npc_reply(k, _reply_event())  # parse ok -> reveal; render fails -> fallback prose
+    assert k.applied[0][1] == "system"  # the structured reveal still stands
+    assert k.applied[0][0][0]["path"] == "blockers.blocker.psp_cert.surfaced"
+    reply = k.applied[-1][0][0]["value"]
+    assert reply["body"] == _FALLBACK_ACK  # prose degraded, but refs still carry the blocker
+    assert reply["refs"] == ["blocker.psp_cert"]

@@ -94,3 +94,18 @@ def test_observation_shape(client):
     res = _action(client, "get_calendar", {})["result"]
     assert set(res) == {"ok", "sim_time", "ack", "events_since"}
     assert res["ok"] is True and isinstance(res["events_since"], list)
+
+
+# --- unexpected-failure mapping ----------------------------------------------
+
+
+def test_unexpected_handler_error_maps_to_internal_error():
+    """A handler that raises unexpectedly returns a structured -32603, never an unhandled 500."""
+    from saasworld.api.rpc import ERR_INTERNAL, dispatch
+
+    class _BoomState:
+        def read(self, path):
+            raise RuntimeError("boom")
+
+    res = dispatch(None, _BoomState(), {}, "get_state", {"path": "x"})
+    assert "result" not in res and res["error"]["code"] == ERR_INTERNAL

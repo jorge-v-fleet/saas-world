@@ -8,6 +8,7 @@ appends it. The parser can request an intent; only the core can grant a reveal.
 
 from __future__ import annotations
 
+import logging
 from typing import Any
 
 from ..events import Event
@@ -16,6 +17,9 @@ from ..llm.parser import LLMParser, Persona
 from .decision import Decision, decide
 
 _DEFAULT_DELAY_MIN = 60
+_FALLBACK_ACK = "Ack."  # deterministic, LLM-free reply used when the parser fails
+
+logger = logging.getLogger(__name__)
 
 
 class NPCEngine:
@@ -58,8 +62,17 @@ class NPCEngine:
         if npc is None:
             return []
         persona = Persona.from_config(npc)
-        intent = self.parser.parse_intent(payload.get("body", ""), persona)
-        decision = decide(npc, intent, payload.get("args", {}), kernel.state.snapshot())
+        try:
+            intent = self.parser.parse_intent(payload.get("body", ""), persona)
+        except Exception:
+            # Parser failed (cache miss / out-of-enum / API error): fail CLOSED — the core is
+            # bypassed so no gated fact can leak on an unclassifiable message — but keep the sim
+            # live with a fixed bare acknowledgement.
+            logger.warning("npc_reply: parse failed for %s (seq=%s); degrading to bare ack",
+                           payload.get("npc"), event.seq, exc_info=True)
+            decision = Decision(reply={"kind": "ack", "refs": [], "fields": {}})
+        else:
+            decision = decide(npc, intent, payload.get("args", {}), kernel.state.snapshot())
         applied: list[dict[str, Any]] = []
         if decision.deltas:
             kernel.state.apply(decision.deltas, source="system")
@@ -77,9 +90,16 @@ class NPCEngine:
         if decision.reply is None:
             return None
         disclosed = [{"key": k, "value": v} for k, v in decision.reply.get("fields", {}).items()]
-        text = self.parser.render_reply(
-            {"intent_out": decision.reply.get("kind"), "disclosed_facts": disclosed}, persona
-        )
+        try:
+            text = self.parser.render_reply(
+                {"intent_out": decision.reply.get("kind"), "disclosed_facts": disclosed}, persona
+            )
+        except Exception:
+            # Render failed: the structured reply (kind/refs and any already-applied reveal) still
+            # stands; only the prose degrades to a fixed acknowledgement.
+            logger.warning("npc_reply: render failed for %s; using bare ack text", persona.id,
+                           exc_info=True)
+            text = _FALLBACK_ACK
         return {
             "op": "append",
             "path": "messages",

@@ -30,12 +30,16 @@ _DEFAULT_URL = "http://127.0.0.1:8080"
 
 
 def _emit(command: str, json_mode: bool, fn: Callable[[], Payload]) -> None:
-    """Run a handler, print its envelope, and translate a CliError into the right exit code."""
+    """Run a handler, print its envelope, and translate failures into the right exit code."""
     try:
         payload = fn()
     except CliError as e:
         render(command, False, json_mode, None, e)
         raise typer.Exit(e.exit_code) from e
+    except Exception as e:  # unexpected: emit a structured envelope, never a raw traceback
+        err = CliError("runtime", f"internal error: {type(e).__name__}")
+        render(command, False, json_mode, None, err)
+        raise typer.Exit(err.exit_code) from e
     render(command, True, json_mode, payload, None)
 
 
