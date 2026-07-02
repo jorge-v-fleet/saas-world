@@ -19,7 +19,7 @@
           "why": "discovery alone is insufficient — must reschedule or record a go/no-go" },
 
         { "id": "correct_action", "w": 0.15,
-          "assert": { "in": { "path": "decisions.gonogo['proj.checkout'].action", "set": ["reschedule", "hold_and_mitigate"] } },
+          "assert": { "in": { "path": "decisions[?type=='gonogo' && about=='proj.checkout'].action", "set": ["reschedule", "hold_and_mitigate"] } },
           "why": "acceptable-answer SET, not equality — set is derived from launch_date_movable=true (movable -> reschedule preferred, hold acceptable)" },
 
         { "id": "stakeholder_informed", "w": 0.10,

@@ -195,6 +195,12 @@ tests/
 - Each system passes its **own** suite in isolation (FakeLLM for neighbors); `-m llm` passes against the committed cassette.
 - `pytest` green; `ruff` + `mypy` clean; **How to run** works from a clean checkout with only a venv (no key) for everything except `--record`.
 
+## As built (deltas from spec)
+
+- **`npc_reply` is emitted only when the `send_message` target is a registered NPC** (`engine.is_registered(to)`); with no scenario loaded / a non-NPC target, `send_message` stays a byte-identical plain chat append. This confines the behavioral change to the discover flow and leaves the Wave 1/3/6 goldens (which schedule `send_message` events with no engine attached) untouched.
+- **Cassette hand-authored, keys generated via the real parser/extractor** so replay hits at runtime; the default suite is fully offline (`tests/cassettes/default.jsonl`, 6 entries). `record` mode lazily imports `anthropic` and raises without a key — no live call in the default suite.
+- **The engine exposes its registry on `kernel.npc_engine`** and lazily builds a replay-mode parser when none is injected, so the RPC path resolves the parser without a second writer.
+
 ## Milestones
 
 1. `llm/cache.py` + `llm/protocols.py` (FakeLLM) + `llm/client.py` record/replay skeleton → `-m llm` green on a hand-written cassette.

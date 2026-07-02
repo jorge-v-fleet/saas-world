@@ -1,4 +1,8 @@
-"""Discover-a-blocker end to end: load -> message Priya (intent) -> advance -> reply + reveal."""
+"""Discover a blocker end to end: load -> free-text message -> parse -> reveal + voiced reply.
+
+Replay mode against the committed cassette: the parser maps the body to an intent, the UNCHANGED
+decision core reveals (system-sourced), and the reply lands at the persona's response delay.
+"""
 
 from __future__ import annotations
 
@@ -33,42 +37,47 @@ def test_load_scenario_seeds_and_reports_version(client):
     assert _get(client, PSP) is False
 
 
-def test_structured_intent_reveals_blocker_and_delivers_reply(client):
+def test_free_text_message_reveals_blocker_and_delivers_reply(client):
     _load(client)
-    sent = _action(client, "send_message", {"to": "org.be_b2", "body": "PSP ready for Friday?",
-                                             "intent": "ask_status",
-                                             "refs": ["task.psp_integration"]})["result"]
-    # npc_react fires synchronously within the zero-duration send; the reply is scheduled for later.
-    assert [(e["sim_time"], e["kind"]) for e in sent["events_since"]] == [
-        (0, "send_message"), (0, "npc_react")]
-    assert _get(client, PSP) is True  # flipped by Priya's reveal (system-sourced), at send time
+    sent = _action(client, "send_message",
+                   {"to": "org.be_b2", "body": "Is the PSP ready for Friday?",
+                    "refs": ["task.psp_integration"]})["result"]
+    # Only the append fires now; npc_reply is scheduled for the persona's response delay.
+    assert [(e["sim_time"], e["kind"]) for e in sent["events_since"]] == [(0, "send_message")]
+    assert _get(client, PSP) is False  # reveal happens when Priya replies, not at send time
 
     res = _action(client, "wait", {"duration": 120})["result"]
-    kinds = [(e["sim_time"], e["kind"]) for e in res["events_since"]]
-    assert kinds == [(90, "deliver_reply")]  # reply lands at the modal response delay
+    assert [(e["sim_time"], e["kind"]) for e in res["events_since"]] == [(90, "npc_reply")]
+    assert _get(client, PSP) is True  # flipped by the decision core's reveal, system-sourced
 
-    assert _get(client, PSP) is True
-    inbox = _get(client, "messages")
-    reply = inbox[-1]
+    reply = _get(client, "messages")[-1]
     assert reply["from"] == "org.be_b2" and reply["to"] == "org.pm_a"
-    assert reply["refs"] == ["blocker.psp_cert"]
+    assert reply["refs"] == ["blocker.psp_cert"] and "Mar 13" in reply["body"]
 
 
-def test_message_without_intent_triggers_no_reaction(client):
+def test_message_to_non_npc_target_triggers_no_reaction(client):
     _load(client)
-    _action(client, "send_message", {"to": "org.be_b2", "body": "hi"})
+    _action(client, "send_message", {"to": "chan.checkout", "body": "Is the PSP ready for Friday?"})
     res = _action(client, "wait", {"duration": 120})["result"]
-    assert res["events_since"] == []  # no npc_react without a structured intent
+    assert res["events_since"] == []  # a channel is not a registered NPC -> plain append
     assert _get(client, PSP) is False
 
 
 def test_wrong_topic_replies_but_does_not_reveal(client):
     _load(client)
-    _action(client, "send_message", {"to": "org.be_b2", "body": "UI status?",
-                                      "intent": "ask_status", "refs": ["task.checkout_ui"]})
+    _action(client, "send_message",
+            {"to": "org.be_b2", "body": "UI status?", "refs": ["task.checkout_ui"]})
     _action(client, "wait", {"duration": 120})
     assert _get(client, PSP) is False  # gate not satisfied
-    assert _get(client, "messages")[-1]["kind"] == "ack"  # still gets an acknowledgement
+    assert _get(client, "messages")[-1]["kind"] == "ack"  # still acknowledged
+
+
+def test_greeting_acknowledges_without_revealing(client):
+    _load(client)
+    _action(client, "send_message", {"to": "org.be_b2", "body": "hi"})
+    _action(client, "wait", {"duration": 120})
+    assert _get(client, PSP) is False
+    assert _get(client, "messages")[-1]["kind"] == "ack"
 
 
 def test_timeline_background_event_fires_during_advance(client):

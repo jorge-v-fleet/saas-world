@@ -154,6 +154,12 @@ tests/
 - Anti-gaming holds: activity padding + hand-set fields move no graded predicate (integration Run B == ~0).
 - `evaluator` marker green; Waves 1–2 markers still green; `ruff` + `mypy` clean; **How to run** works from a clean checkout with only a venv.
 
+## As built (deltas from spec)
+
+- **`correct_action` read path reconciled to the list-filter form.** `record_decision` appends to a flat `decisions` list, which cannot back the dotted-index `decisions.gonogo['proj.checkout'].action`. Fixed in `eval.json` (the Evaluator owns it) to `decisions[?type=='gonogo' && about=='proj.checkout'].action`; `record_decision`'s storage was left untouched. `paths.py` still implements `['index']` (dict subscript + list natural-key) for other reads.
+- **Integration Run A/B drive at the Kernel/event level**, not the live `send_message`/parser path — a directly-scheduled system `reveal` (the same system-sourced delta the NPC produces), the real `record_decision` effect, and a CTO chat-append. This keeps scoring independent of the Wave 4 NPC-trigger rewrite.
+- **Projection is a separate in-memory implementation** (`eval/project.py`) over `{events, snapshots}`; it mirrors `trajectory.replay.state_at` (disk-based) — unification is a later task, not a Wave 3 dependency.
+
 ## Milestones
 
 1. `eval/paths.py` (dotted-path read + index + filter matcher) + `eval/project.py` (projection + baseline) → projection unit tests green.

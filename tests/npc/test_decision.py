@@ -96,13 +96,12 @@ def test_render_uses_persona_voice():
     assert render(reply, _npc()) == "Priya Nair: heads up — cert pending"
 
 
-# --- engine over a fake kernel ----------------------------------------------
+# --- engine over a fake kernel (parser injected for isolation) ---------------
 
 
 class _FakeKernel:
     def __init__(self) -> None:
         self.applied: list[tuple[list[dict[str, Any]], str]] = []
-        self.scheduled: list[tuple[int, str, str, dict[str, Any]]] = []
         self.state = self
 
     def snapshot(self) -> dict[str, Any]:
@@ -111,55 +110,50 @@ class _FakeKernel:
     def apply(self, deltas: list[dict[str, Any]], source: str) -> None:
         self.applied.append((deltas, source))
 
-    def schedule(self, sim_time, actor, kind, payload, caused_by=None) -> int:
-        self.scheduled.append((sim_time, actor, kind, payload))
-        return len(self.scheduled)
+
+def _engine(intent: str = "ask_status", reply: str = "Priya: cert pending") -> NPCEngine:
+    from saasworld.llm.parser import LLMParser
+    from saasworld.llm.protocols import FakeLLM
+
+    engine = NPCEngine(parser=LLMParser(FakeLLM(intents={"*": intent}, reply=reply)))
+    engine.register_npc(_npc())
+    return engine
 
 
-def _react_event(sim_time: int = 0):
+def _reply_event(body: str = "?", about: list[str] | None = None):
     from saasworld.events import Event
 
-    payload = {"npc": "org.be_b2", "intent": "ask_status",
-               "args": _ask(), "sender": "org.pm_a"}
-    return Event(1, sim_time, "org.pm_a", "npc_react", payload)
+    payload = {"npc": "org.be_b2", "body": body, "args": _ask(about=about), "sender": "org.pm_a"}
+    return Event(1, 0, "org.be_b2", "npc_reply", payload)
 
 
 def test_engine_applies_reveal_system_sourced():
-    engine = NPCEngine()
-    engine.register_npc(_npc())
     k = _FakeKernel()
-    engine._npc_react(k, _react_event())
+    _engine()._npc_reply(k, _reply_event())
     assert k.applied[0][1] == "system"  # reveal is system-sourced
     assert k.applied[0][0][0]["path"] == "blockers.blocker.psp_cert.surfaced"
 
 
-def test_engine_schedules_deliver_reply_at_delay():
-    engine = NPCEngine()
-    engine.register_npc(_npc(delay=90))
+def test_engine_appends_voiced_reply_from_npc():
     k = _FakeKernel()
-    engine._npc_react(k, _react_event(sim_time=10))
-    at, actor, kind, payload = k.scheduled[0]
-    assert (at, kind) == (100, "deliver_reply")  # 10 + 90
-    assert payload["to"] == "org.pm_a"
-    assert payload["reply"]["text"].startswith("Priya Nair: heads up")
+    _engine(reply="Priya: heads up")._npc_reply(k, _reply_event())
+    deltas, source = k.applied[-1]
+    assert source == "org.be_b2" and deltas[0]["path"] == "messages"
+    assert deltas[0]["value"]["from"] == "org.be_b2" and deltas[0]["value"]["to"] == "org.pm_a"
+    assert deltas[0]["value"]["body"] == "Priya: heads up"
+    assert deltas[0]["value"]["refs"] == ["blocker.psp_cert"]
+
+
+def test_engine_acks_without_reveal_on_wrong_topic():
+    k = _FakeKernel()
+    _engine(reply="Ack.")._npc_reply(k, _reply_event(about=["task.checkout_ui"]))
+    assert len(k.applied) == 1  # no reveal delta, only the ack message
+    assert k.applied[0][0][0]["value"]["kind"] == "ack"
 
 
 def test_engine_ignores_unknown_npc():
-    engine = NPCEngine()
+    engine = NPCEngine(parser=_engine().parser)
+    engine.npcs.clear()
     k = _FakeKernel()
-    engine._npc_react(k, _react_event())
-    assert k.applied == [] and k.scheduled == []
-
-
-def test_deliver_reply_appends_to_inbox():
-    from saasworld.events import Event
-
-    engine = NPCEngine()
-    k = _FakeKernel()
-    ev = Event(2, 100, "org.be_b2", "deliver_reply",
-               {"to": "org.pm_a", "reply": {"kind": "reveal", "text": "hi", "refs": []}})
-    engine._deliver_reply(k, ev)
-    deltas, source = k.applied[0]
-    assert deltas[0]["path"] == "messages"
-    assert deltas[0]["value"]["to"] == "org.pm_a"
-    assert deltas[0]["value"]["body"] == "hi"
+    engine._npc_reply(k, _reply_event())
+    assert k.applied == []

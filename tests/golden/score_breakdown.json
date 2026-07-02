@@ -1,0 +1,61 @@
+{
+  "artifact_results": [
+    {
+      "credit": 1.0,
+      "id": "decision_comms",
+      "reads_real_field": true,
+      "reason": "cites_blocker=ok; new_date=ok; owner=ok",
+      "status": "pass",
+      "weight": 0.15,
+      "weighted": 0.15
+    }
+  ],
+  "checkpoints": [
+    {
+      "at": 6780,
+      "checkpoint_id": "chk.final",
+      "predicates": [
+        {
+          "credit": 1.0,
+          "id": "blocker_surfaced",
+          "reads_real_field": true,
+          "reason": "blockers.blocker.psp_cert.surfaced == True",
+          "status": "pass",
+          "weight": 0.3,
+          "weighted": 0.3
+        },
+        {
+          "credit": 1.0,
+          "id": "acted_on_blocker",
+          "reads_real_field": true,
+          "reason": "any: projects.proj.checkout.launch_date changed",
+          "status": "pass",
+          "weight": 0.3,
+          "weighted": 0.3
+        },
+        {
+          "credit": 1.0,
+          "id": "correct_action",
+          "reads_real_field": true,
+          "reason": "decisions[?type=='gonogo' && about=='proj.checkout'].action in ['reschedule', 'hold_and_mitigate']",
+          "status": "pass",
+          "weight": 0.15,
+          "weighted": 0.15
+        },
+        {
+          "credit": 1.0,
+          "id": "stakeholder_informed",
+          "reads_real_field": true,
+          "reason": "messages[?to=='org.cto' && references=='blocker.psp_cert'] matched 1",
+          "status": "pass",
+          "weight": 0.1,
+          "weighted": 0.1
+        }
+      ],
+      "subtotal": 0.85
+    }
+  ],
+  "final": 1.0,
+  "scenario_id": "checkout-not-ready",
+  "weights_sum": 1.0
+}

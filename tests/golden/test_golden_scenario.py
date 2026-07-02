@@ -21,7 +21,7 @@ GOLDEN = Path(__file__).parent / "scenario_discover.json"
 
 SCRIPT: list[dict[str, Any]] = [
     {"verb": "send_message", "args": {"to": "org.be_b2", "body": "Is the PSP ready for Friday?",
-                                      "intent": "ask_status", "refs": ["task.psp_integration"]}},
+                                      "refs": ["task.psp_integration"]}},
     {"verb": "wait", "args": {"duration": 120}},
     {"verb": "record_decision", "args": {"about": "proj.checkout", "type": "gonogo",
                                          "action": "reschedule"}},

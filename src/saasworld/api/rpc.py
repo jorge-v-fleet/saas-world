@@ -142,11 +142,15 @@ def _action(
     if verb == "create_task":
         args = {**args, "auto_id": f"t{len(state.read('tasks') or {}) + 1}"}
     deltas, follow_ups = bind_effect(entry, args, kernel.now())
-    if verb == "send_message" and args.get("intent"):
-        # Intent seam: a structured intent wakes the recipient's decision core at `now`.
-        follow_ups = [*follow_ups, {"delay": 0, "actor": AGENT, "kind": "npc_react",
-                      "payload": {"npc": args["to"], "intent": args["intent"],
-                                  "args": args, "sender": AGENT}}]
+    if verb == "send_message":
+        # Reactive reply only for a registered NPC target; else a plain chat append (no follow-up).
+        engine = getattr(kernel, "npc_engine", None)
+        to = args.get("to")
+        if engine is not None and engine.is_registered(to):
+            follow_ups = [*follow_ups, {"delay": engine.response_delay(to), "actor": to,
+                          "kind": "npc_reply",
+                          "payload": {"npc": to, "body": args.get("body", ""),
+                                      "args": args, "sender": AGENT}}]
     for d in deltas:  # dry-run the guard so a denied write never enters the queue
         try:
             check_write_allowed(d["path"], "agent")

@@ -74,7 +74,7 @@
         "to": "org.be_b2"
       },
       {
-        "body": "Priya Nair: heads up \u2014 Sandbox works, but the live account isn't PCI-certified until Mar 13; live payments will fail before then.",
+        "body": "Sandbox's fine, but the live account isn't PCI-certified until Mar 13 \u2014 live payments will fail before then.",
         "from": "org.be_b2",
         "kind": "reveal",
         "refs": [
@@ -197,19 +197,18 @@
         ],
         "follow_ups": [
           {
-            "actor": "org.pm_a",
-            "delay": 0,
-            "kind": "npc_react",
+            "actor": "org.be_b2",
+            "delay": 90,
+            "kind": "npc_reply",
             "payload": {
               "args": {
                 "body": "Is the PSP ready for Friday?",
-                "intent": "ask_status",
                 "refs": [
                   "task.psp_integration"
                 ],
                 "to": "org.be_b2"
               },
-              "intent": "ask_status",
+              "body": "Is the PSP ready for Friday?",
               "npc": "org.be_b2",
               "sender": "org.pm_a"
             }
@@ -220,43 +219,22 @@
       "sim_time": 0
     },
     {
-      "actor": "org.pm_a",
+      "actor": "org.be_b2",
       "caused_by": 4,
-      "kind": "npc_react",
+      "kind": "npc_reply",
       "payload": {
         "args": {
           "body": "Is the PSP ready for Friday?",
-          "intent": "ask_status",
           "refs": [
             "task.psp_integration"
           ],
           "to": "org.be_b2"
         },
-        "intent": "ask_status",
+        "body": "Is the PSP ready for Friday?",
         "npc": "org.be_b2",
         "sender": "org.pm_a"
       },
       "seq": 5,
-      "sim_time": 0
-    },
-    {
-      "actor": "org.be_b2",
-      "caused_by": 5,
-      "kind": "deliver_reply",
-      "payload": {
-        "reply": {
-          "fields": {
-            "fact": "Sandbox works, but the live account isn't PCI-certified until Mar 13; live payments will fail before then."
-          },
-          "kind": "reveal",
-          "refs": [
-            "blocker.psp_cert"
-          ],
-          "text": "Priya Nair: heads up \u2014 Sandbox works, but the live account isn't PCI-certified until Mar 13; live payments will fail before then."
-        },
-        "to": "org.pm_a"
-      },
-      "seq": 6,
       "sim_time": 90
     },
     {
@@ -280,7 +258,7 @@
         ],
         "follow_ups": []
       },
-      "seq": 7,
+      "seq": 6,
       "sim_time": 120
     }
   ]

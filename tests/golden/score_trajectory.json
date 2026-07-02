@@ -1,0 +1,41 @@
+{
+  "snapshots": [
+    {
+      "sim_time": 0,
+      "seq": 0,
+      "state": {
+        "org": {
+          "org.pm_a": {"title": "Product Manager"},
+          "org.be_b2": {"title": "Backend Engineer"},
+          "org.cto": {"title": "CTO"}
+        },
+        "projects": {
+          "proj": {"checkout": {"launch_date": "D5T17:00", "launch_date_movable": true,
+                                "reported_status": "on_track"}}
+        },
+        "blockers": {"blocker": {"psp_cert": {"surfaced": false}}},
+        "decisions": [],
+        "messages": []
+      }
+    }
+  ],
+  "events": [
+    {"seq": 1, "sim_time": 100, "actor": "system", "kind": "reveal", "caused_by": null,
+     "payload": {"deltas": [
+       {"op": "set", "path": "blockers.blocker.psp_cert.surfaced", "value": true}]}},
+    {"seq": 2, "sim_time": 110, "actor": "system", "kind": "reschedule", "caused_by": null,
+     "payload": {"deltas": [
+       {"op": "set", "path": "projects.proj.checkout.launch_date", "value": "D8T17:00"}]}},
+    {"seq": 3, "sim_time": 120, "actor": "agent", "kind": "record_decision", "caused_by": null,
+     "payload": {"deltas": [
+       {"op": "append", "path": "decisions", "value": {
+         "about": "proj.checkout", "type": "gonogo", "action": "reschedule",
+         "new_date": "D8T17:00", "owner": "org.be_b2",
+         "rationale": "PSP live account not PCI-certified until after launch."}}]}},
+    {"seq": 4, "sim_time": 130, "actor": "agent", "kind": "send_message", "caused_by": null,
+     "payload": {"deltas": [
+       {"op": "append", "path": "messages", "value": {
+         "to": "org.cto", "body": "Heads up: PSP cert blocks a Friday launch; recommending a slip.",
+         "refs": ["blocker.psp_cert"]}}]}}
+  ]
+}
