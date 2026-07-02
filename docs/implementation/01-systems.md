@@ -72,7 +72,7 @@ High-level definition of what we build, distilled from `../research/`. Each syst
 - **Determinism is a guarantee, not a component** — there is no "determinism engine." It's enforced inside systems that already exist:
   - single writer + one event queue + next-event clock, no wall-clock coupling (Kernel, 1)
   - seeded PRNG resolved offline into frozen, immutable instances (Seeding Engine 6 → Scenario Loader 5)
-  - LLM calls at temp 0 + seed, cached by `(state, context hash)` (NPC Engine 4, Evaluator 7)
+  - LLM calls cached by `(state, context hash)` + logged; replay reads the log and makes no model call — the Claude API has no `seed` and rejects `temperature`, so LLM determinism is **record/replay, not sampling** (NPC Engine 4, Evaluator 7)
   - state snapshot/restore (World State, 2)
 - **Replay is not a separate system either — it *is* the Trajectory Store (10).** The store persists the canonical event log + snapshots + cached LLM outputs, so `replay(run_id)` reconstructs an episode byte-exactly with no model calls. What we *require* is the store; determinism is the property that makes its replay exact.
 - **Build-time vs runtime boundary:** the Seeding Engine (6) resolves all randomness offline into frozen instances; runtime (1–5, 7–10) consumes them unchanged, so the single-writer + one-queue determinism is never perturbed at grade time.
@@ -82,7 +82,7 @@ High-level definition of what we build, distilled from `../research/`. Each syst
 - Kernel + World State + Tool API → smallest loop that advances time and mutates state.
 - Scenario Loader + one **hand-authored** frozen instance → world seeds and one NPC replies.
 - Evaluator (deterministic predicates only) → score the seeded scenario.
-- NPC LLM parser + eval extractor (temp 0 + seed + cached/logged calls) → free-text surfaces.
+- NPC LLM parser + eval extractor (cached + logged calls, replayed — determinism is record/replay, not sampling) → free-text surfaces.
 - Seeding Engine → generate instances from a template + seed, with co-generated eval + validity gate (replaces hand-authoring as the scaling path).
 - Trajectory Store → persist the event log to `trajectory.jsonl` + manifest from the first runnable loop (cheap; it's the log already emitted). Add the derived index once cross-run queries are wanted.
 - Operator CLI + Observability → reviewer can drive the main flows (incl. `generate/validate/freeze`) and inspect/replay trajectories.

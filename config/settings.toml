@@ -1,0 +1,24 @@
+# saas-world runtime configuration.
+# Operational config — NOT part of the content-addressed dataset (does not affect dataset_version).
+# Every value is overridable by the matching SAASWORLD_* environment variable.
+
+[llm]
+# Shared default for the runtime LLM roles below. Each role overrides `model` independently;
+# both default to this until set — same default for now, decoupled so they can diverge later.
+# Override: SAASWORLD_LLM_MODEL
+model = "claude-sonnet-5"
+
+# Current Claude models reject temperature/top_p/seed; determinism comes from the record/replay
+# cache, not sampling. These only shrink record-time output variance (applied to both roles).
+thinking = "disabled"   # disabled | adaptive
+effort = "low"          # low | medium | high | xhigh | max
+
+[llm.npc_parser]
+# NPC intent classification + persona voice rendering (Wave 4).
+# Override: SAASWORLD_NPC_PARSER_MODEL   (unset → inherits [llm].model)
+# model = "claude-sonnet-5"
+
+[llm.evaluator]
+# Free-text eval-artifact extraction → structured claims (Wave 4).
+# Override: SAASWORLD_EVALUATOR_MODEL    (unset → inherits [llm].model)
+# model = "claude-sonnet-5"
