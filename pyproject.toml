@@ -5,13 +5,14 @@ build-backend = "hatchling.build"
 [project]
 name = "saasworld"
 version = "0.1.0"
-description = "PM-first-week simulation environment — Wave 1 core (Kernel + World State + Tool API)"
+description = "PM-first-week simulation environment — discrete-event sim, deterministic evaluator, operator CLI"
 requires-python = ">=3.12"
 dependencies = [
   "fastapi>=0.110",
   "uvicorn>=0.29",
   "duckdb>=1.0",        # trajectory query index (rebuildable from the JSONL log)
   "anthropic>=0.40",    # LLM parser/extractor client (imported only in record mode)
+  "typer>=0.12",        # operator CLI (thin Click wrapper; --help / typed args)
 ]
 
 [project.optional-dependencies]
@@ -26,6 +27,7 @@ dev = [
 
 [project.scripts]
 saasworld-serve = "saasworld.serve:main"
+saasworld = "saasworld.cli.main:app"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/saasworld"]
@@ -49,6 +51,8 @@ markers = [
   "npc_parser: LLM NPC parser (intent classification + voice rendering)",
   "extractor: LLM eval extractor (prose -> structured claims)",
   "llm: LLM client determinism layer (cache / record / replay)",
+  "seeding: Seeding Engine (sample / bind / assemble / project-eval / gate / freeze)",
+  "cli: Operator CLI (arg parsing / dispatch / --json envelope / exit codes)",
 ]
 
 [tool.ruff]

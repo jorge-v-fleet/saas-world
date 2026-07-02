@@ -1,6 +1,6 @@
 {
   "archetype": "hidden-critical-blocker",
-  "_note": "Archetype definition (data). A seed plus this template defines one scenario instance; the eval predicate shapes below are bound to that instance's concrete IDs.",
+  "_note": "Archetype definition (data). A seed plus this template defines one scenario instance; the world blueprints and eval predicate shapes below are bound to that instance's concrete IDs.",
 
   "invariants": [
     "exactly one blocker sits on the critical path to the launch deadline",
@@ -21,7 +21,7 @@
     "blocker.holder":      { "sample_from": "active npcs where role in [backend, fullstack, sre]", "constraint": "holder != agent" },
     "critical_project":    { "sample_from": "projects owned_by agent" },
     "discovery.hops":      { "sample": [1, 2], "weights": [0.6, 0.4],
-                             "on_2": "add a pointer-holder NPC who names the holder but not the fact (coupled discovery)" },
+                             "on_2": "add a pointer-holder NPC (the agent's report) who names the holder but not the fact" },
     "reveal.gate":         { "sample": ["ask_direct", "needs_rapport", "needs_help_offer"] },
     "deadline.movable":    { "sample": [true, false] },
     "distractor_blockers": { "sample_int": [0, 2], "note": "red herrings that look critical but aren't" },
@@ -29,19 +29,190 @@
     "stakeholder.pressure":{ "sample": ["low", "high"] }
   },
 
+  "world": {
+    "_note": "Blueprints for seed.json. $name = whole-value binding; ${name} interpolates inside a string.",
+    "projects": {
+      "proj.checkout": { "id": "proj.checkout", "name": "Self-serve checkout", "owner": "$agent",
+        "launch_date": "$deadline_offset", "launch_date_movable": "$movable", "reported_status": "on_track" }
+    },
+    "tasks": [
+      { "id": "task.psp_integration", "project": "$critical_project", "title": "Integrate PSP",
+        "owner": "$holder", "status": "in_progress", "due": "$task_due" },
+      { "id": "task.checkout_ui", "project": "$critical_project", "title": "Checkout UI",
+        "owner": "$pointer", "status": "in_progress", "due": "$task_due",
+        "depends_on": ["task.psp_integration"] },
+      { "id": "task.launch_gonogo", "project": "$critical_project", "title": "Launch go/no-go",
+        "owner": "$agent", "status": "todo", "due": "$gonogo_due",
+        "depends_on": ["task.psp_integration"] }
+    ],
+    "surfaces": {
+      "email": [
+        { "id": "email.welcome", "from": "$stakeholder", "to": "$agent",
+          "subject": "Welcome — checkout ships Friday!",
+          "body": "Great to have you. Checkout is our big Q1 bet and it launches Friday. Standup's at 9:30 — jump in." }
+      ],
+      "chat": [
+        { "id": "chan.checkout", "members": ["$agent", "$pointer", "$holder", "$holder_mgr", "$stakeholder"],
+          "messages": [] }
+      ],
+      "calendar": [
+        { "id": "evt.standup", "title": "Checkout standup", "start": "D1T09:30",
+          "attendees": ["$agent", "$pointer", "$holder", "$stakeholder"] }
+      ],
+      "docs": [
+        { "id": "doc.launch_plan", "title": "Checkout launch plan", "claims_status": "on_track" }
+      ],
+      "transcripts": []
+    }
+  },
+
+  "distractor_blocker": {
+    "affects": "task.checkout_ui", "severity": "minor",
+    "summary": "A non-blocking nit that looks scary but isn't on the critical path.",
+    "known_to": ["$agent"], "surfaced": false
+  },
+
+  "blockers": {
+    "_default": {
+      "_note": "Generic blocker content for types without a bespoke authored block; keeps every draw coherent.",
+      "label": "the ${blocker_type} issue",
+      "blocker": { "id": "blocker.psp_cert", "affects": "task.psp_integration", "severity": "launch_blocking",
+        "summary": "A ${blocker_type} blocker sits on the launch path and clears only after the deadline.",
+        "cert_ready": "after(launch)", "known_to": ["$holder"], "surfaced": false },
+      "overlays": {
+        "holder": {
+          "goals": ["Ship the work without being blamed for a slip", "Avoid surfacing bad news unprompted"],
+          "constraints": ["Reveals the ${blocker_type} problem only if asked directly about launch readiness"],
+          "knowledge_scope": [
+            { "id": "know.${blocker_type}", "links_blocker": "$blocker",
+              "fact": "The ${blocker_type} won't clear until after the launch; shipping on time would fail.",
+              "reveal_when": { "intent": "ask_status", "about": ["task.psp_integration", "launch", "checkout"] },
+              "reveal_gradient": { "asked_directly": "full" },
+              "on_reveal": { "effect": "${blocker}.surfaced becomes true" } }
+          ],
+          "escalation_triggers": [ { "if": "asked_directly AND no_help_offered", "then": "reluctantly reveal" } ]
+        },
+        "stakeholder": {
+          "goals": ["Hold the committed launch date"],
+          "constraints": ["Does NOT know ${blocker} at seed"],
+          "knowledge_scope": []
+        },
+        "pointer": {
+          "goals": ["Ship the dependent work"],
+          "constraints": ["Blocked until the upstream task is ready"],
+          "knowledge_scope": [
+            { "id": "know.pointer_${blocker_type}", "links_blocker": null,
+              "fact": "My work is stuck waiting on ${holder_first} — they've been quiet about it.",
+              "reveal_when": { "intent": "ask_status", "about": ["task.checkout_ui", "checkout"] },
+              "reveal_gradient": { "asked_directly": "full" } }
+          ]
+        }
+      }
+    },
+    "pci_cert": {
+      "label": "PSP certification",
+      "blocker": { "id": "blocker.psp_cert", "affects": "task.psp_integration", "severity": "launch_blocking",
+        "summary": "PSP live account isn't PCI-certified until after the launch; live payments would fail if shipped on time",
+        "cert_ready": "after(launch)", "known_to": ["$holder"], "surfaced": false },
+      "overlays": {
+        "holder": {
+          "goals": [
+            "Ship the PSP integration without being blamed for a slip",
+            "Avoid surfacing bad news unprompted — fears being seen as *the* blocker"
+          ],
+          "constraints": [
+            "Never volunteers the cert problem; reveals only if asked directly about payment/PSP readiness",
+            "Heads-down: slow during focus blocks"
+          ],
+          "knowledge_scope": [
+            { "id": "know.psp_cert", "links_blocker": "$blocker",
+              "fact": "Sandbox works, but the live account isn't PCI-certified until Mar 13; live payments will fail before then.",
+              "reveal_when": { "intent": "ask_status", "about": ["task.psp_integration", "payments", "checkout"] },
+              "reveal_gradient": { "asked_directly": "full", "asked_generally_about_launch": "hint_only" },
+              "on_reveal": { "effect": "${blocker}.surfaced becomes true" } }
+          ],
+          "escalation_triggers": [
+            { "if": "asked_directly_about_psp AND no_help_offered", "then": "reluctantly reveal know.psp_cert" }
+          ]
+        },
+        "stakeholder": {
+          "goals": [
+            "Hold the Friday launch date committed to the CEO",
+            "Wants a confident bottom-line status"
+          ],
+          "constraints": [
+            "Does NOT know ${blocker} at seed",
+            "Approves a slip only if given a concrete reason + a proposed new date"
+          ],
+          "knowledge_scope": []
+        },
+        "pointer": {
+          "goals": ["Ship the checkout UI", "Unblock own work"],
+          "constraints": ["Cannot finish the UI until the payments endpoint is ready"],
+          "knowledge_scope": [
+            { "id": "know.ui_blocked_on_psp", "links_blocker": null,
+              "fact": "Checkout UI is stuck waiting on ${holder_first}'s payments endpoint — she's been quiet about it.",
+              "reveal_when": { "intent": "ask_status", "about": ["task.checkout_ui", "checkout"] },
+              "reveal_gradient": { "asked_directly": "full" } }
+          ]
+        }
+      }
+    }
+  },
+
+  "timeline": {
+    "scripted": [
+      { "id": "ev.standup", "at": "D1T09:30", "type": "meeting_start", "event_ref": "evt.standup" },
+      { "id": "ev.cto_checkin", "at": "D2T10:00", "type": "npc_message",
+        "from": "$stakeholder", "to": "$agent", "intent": "ask_status", "about": "$critical_project" }
+    ],
+    "pressure_event": { "id": "ev.cto_pressure", "at": "D4T09:00", "type": "npc_message",
+      "from": "$stakeholder", "to": "$agent", "intent": "apply_pressure",
+      "note": "CEO is asking if Friday holds — I need a straight answer today." }
+  },
+
+  "eval_checkpoint": { "id": "chk.final", "at": "$deadline_offset" },
   "eval_shapes": [
-    { "id": "blocker_surfaced",   "w": 0.30, "shape": "blockers.<blocker>.surfaced == true", "reads_real_field": true },
-    { "id": "acted_on_blocker",   "w": 0.30, "shape": "<critical_project>.launch_date changed OR decision[gonogo, <critical_project>] exists" },
-    { "id": "correct_action",     "w": 0.15, "shape": "decision.action IN (deadline.movable ? {reschedule, hold_and_mitigate} : {hold_and_mitigate})" },
-    { "id": "stakeholder_informed","w": 0.10, "shape": "messages[?to==<stakeholder> && references==<blocker>]" },
-    { "id": "decision_comms",     "w": 0.15, "shape": "state-grounded extraction {cites_blocker, new_date, owner}" }
+    { "id": "blocker_surfaced", "w": 0.30, "reads_real_field": true,
+      "assert": { "path": "blockers.${blocker}.surfaced", "eq": true },
+      "why": "flips ONLY via ${holder_first}'s reveal event; agent has no write path — discovery is un-gameable" },
+    { "id": "acted_on_blocker", "w": 0.30,
+      "assert": { "any": [
+        { "path": "projects.${critical_project}.launch_date", "changed": true },
+        { "exists": "decisions[?type=='gonogo' && about=='${critical_project}']" }
+      ] },
+      "why": "discovery alone is insufficient — must reschedule or record a go/no-go" },
+    { "id": "correct_action", "w": 0.15,
+      "assert": { "in": { "path": "decisions[?type=='gonogo' && about=='${critical_project}'].action", "set": "$correct_set" } },
+      "why": "$correct_why" },
+    { "id": "stakeholder_informed", "w": 0.10,
+      "assert": { "exists": "messages[?to=='${stakeholder}' && references=='${blocker}']" },
+      "why": "${stakeholder_label} told the REAL reason, not a vague slip" },
+    { "id": "decision_comms", "w": 0.15,
+      "source": "action:record_decision(about='${critical_project}')",
+      "prefer_structured": true, "fallback_source": "doc|email",
+      "extract_schema": [
+        { "q": "cites ${blocker_label} as the blocking reason?", "field": "cites_blocker", "type": "bool" },
+        { "q": "states a new launch date?", "field": "new_date", "type": "date|null" },
+        { "q": "names a follow-up owner?", "field": "owner", "type": "string|null" }
+      ],
+      "score": {
+        "cites_blocker": { "w": 0.5, "requires_state": "blockers.${blocker}.surfaced == true" },
+        "new_date":      { "w": 0.3, "requires_state": "projects.${critical_project}.launch_date changed from its seeded value" },
+        "owner":         { "w": 0.2, "requires_state": "org node exists with id == extracted.owner" }
+      } }
+  ],
+  "eval_guards": [
+    { "id": "no_activity_reward", "why": "message counts / task edits touch no graded field; only the predicates above score. Setting task.status by hand does not clear blocked_by or flip surfaced." }
   ],
   "_weights_sum": 1.0,
 
   "example_binding": {
-    "_note": "A concrete slot draw, for illustration.",
+    "_note": "A concrete slot draw, for illustration. `_seed` reproduces it through sample+bind under the committed substrate.",
+    "_seed": 1206,
     "blocker.type": "pci_cert", "blocker.holder": "org.be_b2", "critical_project": "proj.checkout",
     "discovery.hops": 2, "reveal.gate": "ask_direct", "deadline.movable": true,
-    "distractor_blockers": 0, "stakeholder": "org.cto", "stakeholder.pressure": "high"
+    "distractor_blockers": 0, "stakeholder": "org.cto", "stakeholder.pressure": "high",
+    "deadline.offset": "D5T17:00"
   }
 }

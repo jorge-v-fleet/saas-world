@@ -2,7 +2,7 @@
 
 Simulation environment for a project manager's first week at a small-to-medium SaaS company. Design docs in `docs/` (`docs/problem-def.md`, `docs/research/`, `docs/implementation/`).
 
-**Status:** core loop (Kernel + World State + Tool API), the Scenario Loader + NPC engine, the deterministic Evaluator, the LLM NPC parser + eval extractor, and the Trajectory Store are implemented and green. Specs in `docs/implementation/`.
+**Status:** complete and green — core loop (Kernel + World State + Tool API), Scenario Loader + NPC engine, deterministic Evaluator, LLM NPC parser + eval extractor, Trajectory Store, the build-time Seeding Engine, and the operator CLI that ties them together. The **`saasworld` CLI is the reviewer interface** (build · drive · score · inspect); specs in `docs/implementation/`.
 
 ## Requirements
 
@@ -27,7 +27,9 @@ pytest -m evaluator    # deterministic-predicate scoring (grade == replayable)
 pytest -m npc_parser   # LLM NPC parser (intent classification + voice)
 pytest -m extractor    # LLM eval extractor (prose -> structured claims)
 pytest -m llm          # LLM client determinism layer (cache / replay, offline)
-pytest -m observability# Trajectory Store (persist / replay / POV / index)
+pytest -m seeding      # Seeding Engine (sample / bind / assemble / project-eval / gate / freeze)
+pytest -m cli          # Operator CLI (arg parsing / dispatch / --json envelope / exit codes)
+pytest -m observability# Trajectory Store + CLI traj views (persist / replay / POV / index)
 pytest -m integration  # cross-system interactions
 pytest -m golden       # determinism / replay
 pytest -m property     # hypothesis invariants
@@ -36,6 +38,43 @@ ruff check . && mypy src
 ```
 
 The full suite is **offline and key-free** — the LLM parser/extractor run in replay mode against a committed cassette (`tests/cassettes/`). No `ANTHROPIC_API_KEY` is needed except to refresh the cassette (`pytest -m llm --record`).
+
+## Operator CLI — build · drive · score · inspect
+
+`saasworld` is the reviewer interface: build a scenario offline, drive a live episode, score it, then replay and inspect. Every flow is offline and key-free (the LLM parser replays from the committed cassette). Add `--json` to any command for a machine-readable envelope; exit codes are `0` ok · `1` runtime · `2` usage · `3` integrity (gate reject / `dataset_version` mismatch / replay divergence).
+
+Build a scenario — offline, no service (the Seeding Engine):
+
+```
+saasworld generate hidden-critical-blocker --seed 1206 --out /tmp/cand
+saasworld validate /tmp/cand        # coherence · solvable-floor · non-trivial-ceiling
+saasworld freeze   /tmp/cand        # content-hash + provenance -> immutable instance
+```
+
+Seed `1206` reproduces the hand-authored `checkout-not-ready` data byte-for-byte (same `instance_hash`) — the engine emits what was authored by hand.
+
+Drive an episode — embedded backend, one-shot per command (state checkpointed between calls):
+
+```
+saasworld load data/scenarios/checkout-not-ready            # prints RUN_ID
+saasworld step    --run RUN_ID --verb send_message \
+                  --args '{"to":"org.be_b2","body":"Is the PSP ready for Friday?"}'
+saasworld advance --run RUN_ID --by 180                     # drains the NPC reply + timeline
+saasworld observe --run RUN_ID --path blockers.blocker.psp_cert.surfaced   # -> true (discovered)
+saasworld run-eval --run RUN_ID                             # weighted breakdown
+```
+
+Inspect & replay the persisted trajectory:
+
+```
+saasworld traj ls
+saasworld traj show   RUN_ID
+saasworld traj replay RUN_ID                                # byte-exact, zero model calls
+saasworld traj pov    RUN_ID --actor grader --at 480        # the fact-view each predicate read
+saasworld traj query  --reward-hack                         # high activity, ~0 real outcomes
+```
+
+For a persistent session (state living in one process across commands), start the service (below) and pass `--backend http`.
 
 ## Run the service (single process, localhost)
 

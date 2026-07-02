@@ -170,3 +170,18 @@ README.md              # start / drive / run-eval / inspect sections filled from
 3. `cli/runtime.py` (`load/step/advance/observe/run-eval`) over Harness/Kernel/Evaluator, with session checkpoint/restore → drive + score an episode.
 4. `cli/traj.py` (`ls/show/replay/pov/query`) over the Trajectory Store + DuckDB index → `-m observability` green.
 5. Full CLI-driven `-m integration` episode + golden scripted session + README sections → `-m golden` green; **DoD met** (final wave).
+
+## As built (deltas from spec)
+
+- **Observability tests live under `tests/cli/`, not `tests/observability/`.** `tests/observability/` is owned by the Trajectory Store wave; to avoid a collision on a shared tree, the POV/traj-view suites (`tests/cli/test_traj.py`, `tests/cli/test_traj_pov.py`) carry the `observability` **marker** while staying in `tests/cli/`. Run them with `-m observability`.
+- **Workspace root is one env knob.** Embedded run artifacts live under `SAASWORLD_HOME` (default `.`): `runs/<run_id>/` and `index.duckdb`. One variable keeps tests isolated and portless (each sets `SAASWORLD_HOME=tmp_path`).
+- **Embedded session persistence.** World state and the canonical log stay owned by the Trajectory Store (single writer preserved). The only *extra* per-run artifact the CLI writes is `runs/<run_id>/session.json` — the ephemeral live-process state that the log does not capture: the sim clock, the seq counter, and the pending event queue. Resume restores world via `state_at` (the log), re-derives NPC registration by re-running the loader on a throwaway kernel and re-attaching its engine, and re-pushes the pending queue. No world mutation happens off the Kernel path.
+- **run-eval reconstruction.** run-eval rebuilds the Evaluator's `{snapshots, events}` trajectory from the opening snapshot (`snapshots/0.json`) plus each JSONL record's *applied* `delta` (not `payload.deltas`), so NPC/system reveals applied by custom handlers are scored correctly. It writes `score.json` in the index-compatible shape (`total` + `checkpoints` map + full `breakdown`) and refreshes the DuckDB row.
+- **advance maps to the `wait` verb** (class `advance`); `--to T` is converted to `duration = T - now`. `observe` uses `get_state` (Wave 1 `observe` RPC is unscoped); `--actor` is carried for labeling, real per-persona `view_scope` scoping is applied in `traj pov`.
+- **POV scopes are derived, not hand-authored.** grader scope = the path roots the eval predicates read (walked from `eval.json`); agent scope = the visible partitions minus the hidden `blockers` mechanism (so agent POV provably excludes out-of-scope paths); npc scope = its own message/chat traffic.
+- **Backend selection is tested portlessly** by monkeypatching `backend.http_rpc` (no bound port). The optional real cross-backend check that binds a `serve` port is **left for the orchestrator** — HTTP mode covers the drive verbs (`load/step/advance/observe`); `run-eval` and `traj *` are embedded-only reads over the local Trajectory Store.
+
+### Deferred to the engine join
+
+- `tests/integration/test_cli_build_arc.py` (`generate → validate → freeze` against the **real** engine) is `skipif`-gated on `saasworld.engine.generate` still raising `NotImplementedError`; it runs automatically once the seam is implemented. Faked-engine coverage of these verbs is green now in `-m cli` (`tests/cli/test_build.py`).
+- The load→drive→score→inspect arc (`tests/integration/test_cli_episode.py`, `tests/golden/test_cli_golden.py`) runs for real now against the pre-frozen `data/scenarios/checkout-not-ready/` — no engine required.

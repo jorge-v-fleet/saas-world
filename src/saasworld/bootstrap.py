@@ -27,7 +27,7 @@ def _org_people() -> dict[str, Any]:
 
 
 def load_bootstrap(name: str = "minimal") -> dict[str, Any]:
-    """Return an initial world-state dict (single seed 'minimal' in Wave 1)."""
+    """Return an initial world-state dict (single seed 'minimal')."""
     return {
         "org": _org_people(),
         "projects": {

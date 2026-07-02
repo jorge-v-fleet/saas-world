@@ -35,7 +35,7 @@ _OBSERVE_PARTITION = {
     "get_transcript": "surfaces",
 }
 
-AGENT = "org.pm_a"  # the single PM under test in Wave 1
+AGENT = "org.pm_a"  # the single PM under test
 
 
 def _err(code: int, message: str) -> dict[str, Any]:
@@ -97,7 +97,7 @@ def _precondition(verb: str, args: dict[str, Any], state: Any) -> str | None:
 
 
 def _observe_ack(verb: str, args: dict[str, Any], state: Any) -> Any:
-    """Scoped read for an observe action (Wave 1: the relevant partition or a keyed entry)."""
+    """Scoped read for an observe action (the relevant partition or a keyed entry)."""
     part = state.read(_OBSERVE_PARTITION.get(verb, "")) or {}
     if not isinstance(part, dict):
         return part

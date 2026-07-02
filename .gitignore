@@ -68,3 +68,8 @@ runs/
 *.duckdb
 *.duckdb.wal
 index.sqlite
+
+# ── Build-time scenario candidates (unfrozen, regenerable from (template, seed)) ──
+# Frozen instances under data/scenarios/ ARE committed (the reviewer loads them and the
+# golden reproduces them); candidates the Seeding Engine emits are disposable scratch.
+data/candidates/

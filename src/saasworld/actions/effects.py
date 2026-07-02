@@ -30,7 +30,7 @@ def bind_effect(
     """Return (deltas, follow_ups) for a catalog entry bound with args. Fully deterministic.
 
     `set_each` expands into one `set` delta per key of its `$dict` value (per-field writes so the
-    constrained-write guard is exercised leaf-by-leaf). follow_ups is [] in Wave 1.
+    constrained-write guard is exercised leaf-by-leaf). Catalog effects carry no follow_ups.
     """
     effect = entry.get("effect")
     if not effect:
