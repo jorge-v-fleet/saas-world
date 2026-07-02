@@ -20,40 +20,49 @@
     { "id": "get_transcript", "class": "observe", "args": { "meeting": "id" }, "reads": "transcripts[meeting]", "returns": "meeting transcript" },
 
     { "id": "send_message", "class": "mutate", "args": { "to": "id|channel", "body": "text", "refs": "[id]?" },
-      "effect": "append message to a chat channel",
+      "effect": [ { "op": "append", "path": "messages", "value": { "to": "$to", "body": "$body", "refs": "$refs" } } ],
+      "_effect": "append message to a chat channel",
       "emits": "npc_reply at now + the persona's response_delay; the body is mapped to one intent",
       "pre": "channel exists and agent is a member, or a DM to a known person",
       "_note": "refs are optional structured pointers (e.g. a blocker id) the grader reads deterministically, without trusting the prose" },
 
     { "id": "send_email", "class": "mutate", "args": { "to": "id", "subject": "text", "body": "text", "refs": "[id]?" },
-      "effect": "append email", "emits": "npc_reply at now + the persona's response_delay" },
+      "effect": [ { "op": "append", "path": "email", "value": { "to": "$to", "subject": "$subject", "body": "$body", "refs": "$refs" } } ],
+      "_effect": "append email", "emits": "npc_reply at now + the persona's response_delay" },
 
     { "id": "create_task", "class": "mutate", "args": { "project": "id", "title": "text", "owner": "id", "due": "offset?" },
-      "effect": "append task (status = todo)" },
+      "effect": [ { "op": "set", "path": "tasks.$auto_id", "value": { "project": "$project", "title": "$title", "owner": "$owner", "status": "todo" } } ],
+      "_effect": "set task at a deterministic id (status = todo); the API injects $auto_id" },
 
     { "id": "update_task", "class": "mutate", "args": { "task": "id", "set": { "status?": "", "owner?": "", "due?": "", "priority?": "" } },
-      "effect": "patch allowed task fields only",
+      "effect": [ { "op": "set_each", "path": "tasks.$task", "value": "$set" } ],
+      "_effect": "per-field write of allowed task fields (guard is exercised leaf-by-leaf)",
       "_note": "status/owner/due/priority are writable; blocked_by is DERIVED and not writable — editing status does not clear a blocker (touches no graded field)" },
 
     { "id": "book_meeting", "class": "mutate", "args": { "title": "text", "attendees": "[id]", "at": "offset", "duration": "mins" },
-      "effect": "append calendar event", "emits": "meeting_start at the event time" },
+      "effect": [ { "op": "append", "path": "calendar", "value": { "title": "$title", "attendees": "$attendees", "at": "$at", "duration": "$duration" } } ],
+      "_effect": "append calendar event", "emits": "meeting_start at the event time" },
 
     { "id": "create_doc", "class": "mutate", "args": { "title": "text", "body": "text" },
-      "effect": "append doc (a free-text artifact eligible for extraction)" },
+      "effect": [ { "op": "append", "path": "docs", "value": { "title": "$title", "body": "$body" } } ],
+      "_effect": "append doc (a free-text artifact eligible for extraction)" },
 
-    { "id": "update_doc", "class": "mutate", "args": { "doc": "id", "body": "text" }, "effect": "replace doc body" },
+    { "id": "update_doc", "class": "mutate", "args": { "doc": "id", "body": "text" },
+      "effect": [ { "op": "append", "path": "docs", "value": { "update": "$doc", "body": "$body" } } ],
+      "_effect": "replace doc body" },
 
     { "id": "record_decision", "class": "mutate",
       "args": { "about": "id", "type": "enum", "action": "enum?", "new_date": "offset?", "owner": "id?", "rationale": "text?" },
-      "effect": "write a structured decision",
+      "effect": [ { "op": "append", "path": "decisions", "value": { "about": "$about", "type": "$type", "action": "$action", "new_date": "$new_date", "owner": "$owner", "rationale": "$rationale" } } ],
+      "_effect": "write a structured decision",
       "_note": "the reward-bearing structured action — grading reads these fields directly; prefer it over free-text docs so scoring reads structure" },
 
     { "id": "wait", "class": "advance", "args": { "duration": "mins|until_offset" },
-      "effect": "release the clock to now + duration; the next-event jump fires all due events in time order",
+      "_effect": "release the clock to now + duration; the next-event jump fires all due events in time order",
       "_note": "the canonical clock-release; carries no mutation of its own" },
 
     { "id": "attend_meeting", "class": "advance", "args": { "meeting": "id" },
-      "effect": "release the clock across the meeting window",
+      "_effect": "release the clock across the meeting window",
       "emits": "transcript appended at meeting end",
       "pre": "agent is an attendee and now is within the meeting window" }
   ]
