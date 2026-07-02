@@ -6,39 +6,33 @@ Simulation environment for a project manager's first week at a small-to-medium S
 
 ## Quick start
 
-Everything below is offline and key-free. From a clean checkout:
+The repo ships pre-built scenarios under `data/scenarios/`, so you just **load one and drive it** — no build step. Everything below is offline and key-free. From a clean checkout:
 
 ```
 # 1 · install
 uv venv && source .venv/bin/activate && uv pip install -e ".[dev]"
 
-# 2 · build a scenario  (a template + seed -> a frozen, immutable instance; fully deterministic)
-saasworld generate hidden-critical-blocker --seed 1206 --out /tmp/checkout
-saasworld freeze   /tmp/checkout
+# 2 · load a pre-built scenario  (load prints RUN_ID = checkout-not-ready.baseline.0)
+saasworld load data/scenarios/checkout-not-ready
 
-# 3 · load it and act  (load prints a RUN_ID — use it below)
-saasworld load    /tmp/checkout
+# 3 · discover the hidden blocker with a free-text message, then take the PM call
+saasworld step    --run RUN_ID --verb send_message \
+                  --args '{"to":"org.be_b2","body":"Is the PSP ready for Friday?","refs":["task.psp_integration"]}'
+saasworld advance --run RUN_ID --by 120                                    # NPC reply fires; blocker surfaces
+saasworld observe --run RUN_ID --path blockers.blocker.psp_cert.surfaced   # -> true (discovered)
 saasworld step    --run RUN_ID --verb record_decision \
                   --args '{"about":"proj.checkout","type":"gonogo","action":"reschedule","new_date":"D8T17:00","owner":"org.be_b2"}'
 saasworld advance --run RUN_ID --by 600
 
 # 4 · score it
-saasworld run-eval --run RUN_ID          # -> final ≈ 0.48  (acted on the blocker, correct call)
+saasworld run-eval --run RUN_ID          # -> final ≈ 0.86  (discovered + acted + correct call)
 ```
 
-That's the whole loop: **generate a scenario, load it, take a PM action, get a defensible score.** Grading is pure deterministic Python over the trajectory and state-grounded — activity without real outcomes scores ~0, so the score can't be gamed by looking busy. Seed `1206` reproduces the hand-authored `checkout-not-ready` data byte-for-byte (same `instance_hash`).
+That's the whole loop: **load a scenario, discover the hidden blocker, take the right PM call, get a defensible score.** Grading is pure deterministic Python over the trajectory and state-grounded — activity without real outcomes scores ~0, so the score can't be gamed by looking busy. (Authoring or generating *new* scenarios is a separate build-time step — see [Advanced](#advanced--authoring--generating-scenarios).)
 
 ## All commands
 
 `saasworld --help` lists every verb. Add `--json` to any command for a machine-readable envelope; exit codes: `0` ok · `1` runtime · `2` usage · `3` integrity (gate reject / `dataset_version` mismatch / replay divergence).
-
-**Build** — offline, no service (the Seeding Engine):
-
-```
-saasworld generate <archetype> --seed N --out DIR   # sample -> bind -> assemble -> project-eval
-saasworld validate DIR                              # coherence · solvable-floor · non-trivial-ceiling
-saasworld freeze   DIR                              # content-hash + provenance -> immutable instance
-```
 
 **Drive** — embedded backend, one-shot per command (state checkpointed between calls):
 
@@ -73,8 +67,51 @@ saasworld traj query  --reward-hack                 # high activity, ~0 real out
 
 ```
 python -m saasworld.serve                           # JSON-RPC on 127.0.0.1:8080
-saasworld load /tmp/checkout --backend http
+saasworld load data/scenarios/checkout-not-ready --backend http
 ```
+
+## Agent SDK (OpenEnv-shaped)
+
+A decoupled client/server SDK for driving an episode from agent code, mirroring Hugging Face [OpenEnv](https://github.com/meta-pytorch/OpenEnv)'s contract *by shape* (`reset` / `step` / `state` → `StepResult`, same `Action` / `Observation` / `State` fields) — native, no `openenv` dependency. Reward is **terminal**: `None` each step until the sim clock crosses the last eval checkpoint, then the deterministic Evaluator's final score (full breakdown in `observation.metadata["score"]`), identical to `run-eval`.
+
+```
+# server (separate process, localhost:8092 — off the Tool API's 8080)
+saasworld-env-serve          # or: python -m saasworld.openenv.serve
+```
+
+```python
+from saasworld.openenv import SaasWorldEnv, SaasWorldAction
+
+with SaasWorldEnv("http://127.0.0.1:8092") as env:
+    res = env.reset(scenario="checkout-not-ready")
+    res = env.step(SaasWorldAction("send_message",
+                   {"to": "org.be_b2", "body": "Is the PSP ready for Friday?",
+                    "refs": ["task.psp_integration"]}))
+    res = env.step(SaasWorldAction("wait", {"duration": 120}))         # Priya replies; blocker surfaces
+    res = env.step(SaasWorldAction("record_decision",
+                   {"about": "proj.checkout", "type": "gonogo", "action": "reschedule"}))
+    while not res.done:                                                # advance to end-of-week
+        res = env.step(SaasWorldAction("wait", {"duration": 600}))
+    print(res.reward)                                                  # evaluator final in [0,1]
+```
+
+`SaasWorldEnvironment` (server-side) is also usable in-process without HTTP; `env.step(...)` returns the `SaasWorldObservation` directly. One environment = one session (single writer) — run one process per concurrent episode.
+
+## Advanced — authoring & generating scenarios
+
+Only needed to add *new* cases to the dataset; the pre-built scenarios above need none of this. Build-time is offline, no service (the Seeding Engine):
+
+```
+saasworld generate <archetype> --seed N --out DIR   # template + seed -> candidate (sample->bind->assemble->project-eval)
+saasworld validate DIR                              # the gate: coherence · solvable-floor · non-trivial-ceiling
+saasworld freeze   DIR                              # content-hash + provenance -> immutable instance
+```
+
+- **generate** samples a template's slots into a candidate instance (the 5 files) under `--out` (default `data/candidates/`, gitignored & regenerable). Same `(archetype, seed)` is byte-identical.
+- **validate** is the promotion filter: a candidate is freezable only if it passes all three sub-gates (a *competent* solver scores ~1.0, a *lazy* one ~0). Failing candidates are rejected, never frozen.
+- **freeze** stamps the passing instance immutable. To add it to the committed dataset, place/freeze it under `data/scenarios/` and commit that — candidates and `runs/` stay ignored.
+
+Hand-authoring (like `checkout-not-ready`, `"authored": "by-hand"`) writes the same 5 files directly. The `scenario-author` agent (`.claude/agents/`) interviews you and drives this whole loop.
 
 ## Tests
 

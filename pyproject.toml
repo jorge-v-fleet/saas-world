@@ -27,6 +27,7 @@ dev = [
 
 [project.scripts]
 saasworld-serve = "saasworld.serve:main"
+saasworld-env-serve = "saasworld.openenv.serve:main"
 saasworld = "saasworld.cli.main:app"
 
 [tool.hatch.build.targets.wheel]
@@ -53,6 +54,7 @@ markers = [
   "llm: LLM client determinism layer (cache / record / replay)",
   "seeding: Seeding Engine (sample / bind / assemble / project-eval / gate / freeze)",
   "cli: Operator CLI (arg parsing / dispatch / --json envelope / exit codes)",
+  "openenv: OpenEnv-shaped SDK (env reset/step/state, HTTP client/server, terminal reward)",
 ]
 
 [tool.ruff]
