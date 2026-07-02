@@ -1,6 +1,6 @@
-# Trajectory store — rollout logging & observability (v0 — to iterate)
+# Trajectory store — rollout logging & observability
 
-How every rollout is persisted so we can replay it, observe it from any POV, and compare across trajectories to find failures / reward-hacks / what to improve. Builds on `02`'s Determinism & Replay.
+How every rollout is persisted so we can replay it, observe it from any POV, and compare across trajectories to find failures / reward-hacks / what to improve. Builds on `02`'s canonical event log + determinism guards — determinism is a property; **replay lives here, not in a separate layer**.
 
 ## Core stance
 
@@ -11,7 +11,7 @@ How every rollout is persisted so we can replay it, observe it from any POV, and
 
 ## What one trajectory captures
 
-- **Manifest** — `run_id`, scenario instance **content-hash** + seed, **agent-under-test id + version**, generator/substrate provenance, sim `t0`.
+- **Manifest** — `run_id`, **`dataset_version`** (pinned dataset hash, per `04`) + `scenario_id`, seed, **agent-under-test id + version**, sim `t0`. **Validated on load:** the runtime re-hashes the dataset and refuses to run on mismatch — a pinned version can never silently drift.
 - **Ordered event records** (replay-grade) — uniform envelope, one per state-changing moment:
   - agent action (`verb + args`) + returned observation
   - fired events (NPC reply, autonomous wake-up, `meeting_start`, scheduled pressure)
@@ -41,23 +41,23 @@ All are pure functions of the canonical log at a timestamp — no stored duplica
 
 ## Cross-trajectory analysis (what tools build on top)
 
-- **Index columns**: `run_id`, `scenario_archetype`, `scenario_hash`, `seed`, `agent_version`, per-checkpoint scores, total, `#actions`, `#real_deltas`, `#messages`, sim/wall durations.
+- **Index columns**: `run_id`, `dataset_version`, `scenario_id`, `scenario_archetype`, `seed`, `agent_version`, per-checkpoint scores, total, `#actions`, `#real_deltas`, `#messages`, sim/wall durations.
 - **Enables**:
-  - **Version regression** — same `scenario_hash`, varying `agent_version` → did we improve?
+  - **Version regression** — same `dataset_version` + `scenario_id`, varying `agent_version` → did we improve?
   - **Failure clustering** — group low scores by which checkpoint dropped.
   - **Reward-hack signal** — high `#messages`, `#real_deltas ≈ 0`, low score → activity without outcomes.
   - **NPC-interaction stats** — discovery hops taken, reveals triggered, response latencies.
 
 ## Identity & comparability
 
-- Two trajectories are comparable **iff same `scenario_hash`** (identical frozen world + eval). `agent_version` varies to measure improvement; `seed` is already inside the scenario provenance.
+- Two trajectories are comparable **iff same `(dataset_version, scenario_id)`** (identical substrate + scenario + eval). `agent_version` varies to measure improvement; `seed` is part of the scenario definition.
 - Trajectory + its frozen scenario instance = **self-contained and re-runnable offline**.
 
 ## Suggested layout
 
 ```
 runs/<run_id>/
-  manifest.json      # provenance, scenario hash, agent version
+  manifest.json      # dataset_version, scenario_id, agent version
   trajectory.jsonl   # append-only canonical event log (source of truth)
   snapshots/         # periodic + final state snapshots (replay checkpoints)
   score.json         # final breakdown (derivable from the log)

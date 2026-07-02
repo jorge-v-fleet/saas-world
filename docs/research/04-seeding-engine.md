@@ -47,6 +47,15 @@ Weights come from the template; the projector validates they sum to 1.0.
 - **Runtime untouched.** The kernel consumes a frozen instance; `02`'s single-writer + one-queue determinism is unaffected.
 - **Instances are immutable; substrate pinned.** A frozen instance pins its `substrate_hash`; a later base change never mutates it. Regeneration is an explicit opt-in that emits a *new* instance under the new substrate; a drift report lists instances lagging current substrate.
 
+## Content addressing (dataset version)
+
+The shared hashing primitive — used for instance provenance above and run pinning in `06`.
+
+- **Canonicalize** each data file before hashing: sort keys, normalize whitespace, strip `_`-prefixed annotation fields (so doc-note edits never change a hash).
+- **Hash** each canonical file with SHA-256; a subtree hash = SHA-256 over its sorted `(path, file_hash)` pairs.
+- **`dataset_version`** = that hash applied to the whole dataset (substrate + all scenarios + action space); derived/disposable artifacts (e.g. the run index) are excluded.
+- Deterministic and machine-independent — identical content → identical `dataset_version`, anywhere. Any change to substrate, a scenario, or the action space flips it; formatting and notes do not.
+
 ## Validity gate (keeps generated scenarios defensible)
 
 - **Coherence** — invariants hold (exactly one blocker on the critical path; holder is `active`-tier; ≥1 action flips `surfaced`; no agent write path to `surfaced`).
