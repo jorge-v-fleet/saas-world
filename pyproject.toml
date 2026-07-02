@@ -11,6 +11,7 @@ dependencies = [
   "fastapi>=0.110",
   "uvicorn>=0.29",
   "duckdb>=1.0",        # trajectory query index (rebuildable from the JSONL log)
+  "anthropic>=0.40",    # LLM parser/extractor client (imported only in record mode)
 ]
 
 [project.optional-dependencies]
@@ -44,6 +45,10 @@ markers = [
   "scenario: Scenario Loader / frozen-instance tests",
   "npc: NPC engine (rule-based decision core + reply rendering)",
   "observability: Trajectory Store (persist / replay / POV / query)",
+  "evaluator: deterministic-predicate Evaluator (scoring the trajectory)",
+  "npc_parser: LLM NPC parser (intent classification + voice rendering)",
+  "extractor: LLM eval extractor (prose -> structured claims)",
+  "llm: LLM client determinism layer (cache / record / replay)",
 ]
 
 [tool.ruff]
