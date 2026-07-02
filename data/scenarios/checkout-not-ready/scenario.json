@@ -1,0 +1,11 @@
+{
+  "id": "checkout-not-ready",
+  "archetype": "hidden-critical-blocker",
+  "time": {
+    "day1_weekday": "Mon",
+    "horizon_days": 5,
+    "_note": "All scenario times are offsets like D<day>T<HH:MM> from t0 (D1 = first working day). The runtime assigns the absolute clock — never calendar dates."
+  },
+  "authored": "by-hand",
+  "activate": ["org.cto", "org.pm_b", "org.fe_a1", "org.be_b2"]
+}

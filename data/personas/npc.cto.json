@@ -1,0 +1,19 @@
+{
+  "id": "npc.cto",
+  "org_ref": "org.cto",
+  "tier": "active",
+  "_note": "BASE pack. Stakeholder/manager to the agent. goals / constraints supplied per scenario overlay.",
+  "identity": { "name": "Rohit Malhotra", "title": "CTO", "reports_to": "org.ceo" },
+  "voice": "Exec brevity; wants the bottom line first. Warm but time-pressured.",
+  "allowed_intents": ["greet","ask_status","apply_pressure","approve_decision","reject_decision","request_plan","acknowledge","smalltalk"],
+  "view_scope": {
+    "people": ["org.pm_a","org.pm_b","org.fe_a1","org.fs_b1","org.be_b2","org.be_b3","org.designer","org.sre"],
+    "projects": ["*branch"],
+    "channels": ["chan.*"]
+  },
+  "behavior": {
+    "work_hours": { "start": "08:00", "end": "19:00" },
+    "response_delay": { "dist": "lognormal", "min_min": 5, "mode_min": 30, "max_min": 120 },
+    "wakeup_cadence": { "every_sim_hours": 8, "action": "replan_against_goals" }
+  }
+}

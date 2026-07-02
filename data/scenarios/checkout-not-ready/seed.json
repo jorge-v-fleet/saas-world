@@ -1,0 +1,42 @@
+{
+  "_scenario": "checkout-not-ready",
+  "_note": "Scenario-specific world seed, layered on the base org/company. People are referenced by org.* id (structural identity); each maps to its active persona where one exists.",
+  "projects": [
+    { "id": "proj.checkout", "name": "Self-serve checkout", "owner": "org.pm_a",
+      "launch_date": "D5T17:00", "launch_date_movable": true, "reported_status": "on_track" }
+  ],
+  "tasks": [
+    { "id": "task.psp_integration", "project": "proj.checkout", "title": "Integrate PSP",
+      "owner": "org.be_b2", "status": "in_progress", "due": "D3T17:00" },
+    { "id": "task.checkout_ui", "project": "proj.checkout", "title": "Checkout UI",
+      "owner": "org.fe_a1", "status": "in_progress", "due": "D3T17:00",
+      "depends_on": ["task.psp_integration"] },
+    { "id": "task.launch_gonogo", "project": "proj.checkout", "title": "Launch go/no-go",
+      "owner": "org.pm_a", "status": "todo", "due": "D5T12:00",
+      "depends_on": ["task.psp_integration"] }
+  ],
+  "blockers": [
+    { "id": "blocker.psp_cert", "affects": "task.psp_integration", "severity": "launch_blocking",
+      "summary": "PSP live account isn't PCI-certified until after the launch; live payments would fail if shipped on time",
+      "cert_ready": "after(launch)",
+      "known_to": ["org.be_b2"], "surfaced": false,
+      "_write_policy": "surfaced becomes true only when the holder reveals it during the sim — nothing the agent does can set it directly. This is what makes discovery un-gameable." }
+  ],
+  "surfaces": {
+    "email": [
+      { "id": "email.welcome", "from": "org.cto", "to": "org.pm_a",
+        "subject": "Welcome — checkout ships Friday!", "body": "Great to have you. Checkout is our big Q1 bet and it launches Friday. Standup's at 9:30 — jump in." }
+    ],
+    "chat": [
+      { "id": "chan.checkout", "members": ["org.pm_a", "org.fe_a1", "org.be_b2", "org.pm_b", "org.cto"], "messages": [] }
+    ],
+    "calendar": [
+      { "id": "evt.standup", "title": "Checkout standup", "start": "D1T09:30",
+        "attendees": ["org.pm_a", "org.fe_a1", "org.be_b2", "org.cto"] }
+    ],
+    "docs": [
+      { "id": "doc.launch_plan", "title": "Checkout launch plan", "claims_status": "on_track" }
+    ],
+    "transcripts": []
+  }
+}

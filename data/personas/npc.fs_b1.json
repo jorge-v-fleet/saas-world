@@ -1,0 +1,19 @@
+{
+  "id": "npc.fs_b1",
+  "org_ref": "org.fs_b1",
+  "tier": "active",
+  "_note": "BASE pack. Fullstack eng on PM B's team.",
+  "identity": { "name": "Leo Kim", "title": "Fullstack Engineer", "reports_to": "org.pm_b" },
+  "voice": "Pragmatic, moves across stack layers, terse.",
+  "allowed_intents": ["greet","ask_status","ask_eta","request_help","offer_help","report_blocker","handoff","acknowledge","smalltalk"],
+  "view_scope": {
+    "people": ["org.pm_b","org.be_b2","org.be_b3","org.fe_a1","org.designer"],
+    "projects": ["*assigned"],
+    "channels": ["chan.*:member"]
+  },
+  "behavior": {
+    "work_hours": { "start": "09:30", "end": "18:30" },
+    "response_delay": { "dist": "lognormal", "min_min": 10, "mode_min": 60, "max_min": 200 },
+    "wakeup_cadence": { "every_sim_hours": 5, "action": "replan_against_goals" }
+  }
+}

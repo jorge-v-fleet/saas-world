@@ -1,0 +1,12 @@
+{
+  "_scenario": "checkout-not-ready",
+  "_note": "Only SCRIPTED events live here, as offsets from t0. Reactive replies (now + realistic_delay) and autonomous NPC wake-ups are self-scheduled from the persona packs — never hand-listed.",
+  "scripted": [
+    { "id": "ev.standup", "at": "D1T09:30", "type": "meeting_start", "event_ref": "evt.standup" },
+    { "id": "ev.cto_checkin", "at": "D2T10:00", "type": "npc_message",
+      "from": "org.cto", "to": "org.pm_a", "intent": "ask_status", "about": "proj.checkout" },
+    { "id": "ev.cto_pressure", "at": "D4T09:00", "type": "npc_message",
+      "from": "org.cto", "to": "org.pm_a", "intent": "apply_pressure",
+      "note": "CEO is asking if Friday holds — I need a straight answer today." }
+  ]
+}

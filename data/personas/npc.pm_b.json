@@ -1,0 +1,20 @@
+{
+  "id": "npc.pm_b",
+  "org_ref": "org.pm_b",
+  "tier": "active",
+  "_note": "BASE pack — durable across all scenarios. goals / knowledge_scope / escalation_triggers are supplied by each scenario's overlay, not here.",
+  "identity": { "name": "Nadia Okafor", "title": "Product Manager", "reports_to": "org.cto" },
+  "voice": "Direct, collaborative; asks clarifying questions before committing. Peer-to-peer with the agent.",
+  "allowed_intents": ["greet","ask_status","ask_eta","request_help","offer_help","share_context","escalate","acknowledge","smalltalk"],
+  "view_scope": {
+    "_note": "Declarative filter over the world state — resolved to this NPC's view; never a separate copy.",
+    "people": ["org.cto","org.pm_a","org.fs_b1","org.be_b2","org.be_b3","org.designer","org.sre"],
+    "projects": ["*owned","*collaborating"],
+    "channels": ["chan.*:member"]
+  },
+  "behavior": {
+    "work_hours": { "start": "09:00", "end": "18:00" },
+    "response_delay": { "dist": "lognormal", "min_min": 10, "mode_min": 45, "max_min": 180 },
+    "wakeup_cadence": { "every_sim_hours": 4, "action": "replan_against_goals" }
+  }
+}

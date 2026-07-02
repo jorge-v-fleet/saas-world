@@ -1,0 +1,53 @@
+{
+  "_scenario": "checkout-not-ready",
+  "_stance": "State deltas carry the score; free-text is state-grounded extraction, never text-vs-text.",
+  "checkpoints": [
+    {
+      "id": "chk.final",
+      "at": "D5T17:00",
+      "predicates": [
+        { "id": "blocker_surfaced", "w": 0.30,
+          "assert": { "path": "blockers.blocker.psp_cert.surfaced", "eq": true },
+          "reads_real_field": true,
+          "why": "flips ONLY via Priya's reveal event; agent has no write path — discovery is un-gameable" },
+
+        { "id": "acted_on_blocker", "w": 0.30,
+          "assert": { "any": [
+            { "path": "projects.proj.checkout.launch_date", "changed": true },
+            { "exists": "decisions[?type=='gonogo' && about=='proj.checkout']" }
+          ] },
+          "why": "discovery alone is insufficient — must reschedule or record a go/no-go" },
+
+        { "id": "correct_action", "w": 0.15,
+          "assert": { "in": { "path": "decisions.gonogo['proj.checkout'].action", "set": ["reschedule", "hold_and_mitigate"] } },
+          "why": "acceptable-answer SET, not equality — set is derived from launch_date_movable=true (movable -> reschedule preferred, hold acceptable)" },
+
+        { "id": "stakeholder_informed", "w": 0.10,
+          "assert": { "exists": "messages[?to=='org.cto' && references=='blocker.psp_cert']" },
+          "why": "CTO told the REAL reason, not a vague slip" }
+      ]
+    }
+  ],
+  "artifact_predicates": [
+    { "id": "decision_comms", "w": 0.15,
+      "source": "action:record_decision(about='proj.checkout')",
+      "prefer_structured": true,
+      "fallback_source": "doc|email",
+      "extract_schema": [
+        { "q": "cites PSP certification as the blocking reason?", "field": "cites_blocker", "type": "bool" },
+        { "q": "states a new launch date?", "field": "new_date", "type": "date|null" },
+        { "q": "names a follow-up owner?", "field": "owner", "type": "string|null" }
+      ],
+      "score": {
+        "_note": "STATE-GROUNDED: each extracted claim is credited only if world state backs it. A claim the state contradicts scores 0 — this is the primary prompt-injection defense.",
+        "cites_blocker": { "w": 0.5, "requires_state": "blockers.blocker.psp_cert.surfaced == true" },
+        "new_date":      { "w": 0.3, "requires_state": "projects.proj.checkout.launch_date changed from its seeded value" },
+        "owner":         { "w": 0.2, "requires_state": "org node exists with id == extracted.owner" }
+      }
+    }
+  ],
+  "guards": [
+    { "id": "no_activity_reward", "why": "message counts / task edits touch no graded field; only the predicates above score. Setting task.status by hand does not clear blocked_by or flip surfaced." }
+  ],
+  "_weights_sum": 1.0
+}

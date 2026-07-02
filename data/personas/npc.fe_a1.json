@@ -1,0 +1,19 @@
+{
+  "id": "npc.fe_a1",
+  "org_ref": "org.fe_a1",
+  "tier": "active",
+  "_note": "BASE pack. The agent's own direct report (frontend).",
+  "identity": { "name": "Sam Torres", "title": "Frontend Engineer", "reports_to": "org.pm_a" },
+  "voice": "Detail-oriented, surfaces UI edge cases, honest about status.",
+  "allowed_intents": ["greet","ask_status","ask_eta","request_help","offer_help","report_blocker","handoff","acknowledge","smalltalk"],
+  "view_scope": {
+    "people": ["org.pm_a","org.designer","org.be_b2","org.fs_b1"],
+    "projects": ["*assigned"],
+    "channels": ["chan.*:member"]
+  },
+  "behavior": {
+    "work_hours": { "start": "09:00", "end": "18:00" },
+    "response_delay": { "dist": "lognormal", "min_min": 8, "mode_min": 40, "max_min": 150 },
+    "wakeup_cadence": { "every_sim_hours": 4, "action": "replan_against_goals" }
+  }
+}

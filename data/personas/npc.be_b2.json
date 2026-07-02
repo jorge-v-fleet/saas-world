@@ -1,0 +1,19 @@
+{
+  "id": "npc.be_b2",
+  "org_ref": "org.be_b2",
+  "tier": "active",
+  "_note": "BASE pack. Backend eng on PM B's team. Often the holder of cross-team gated knowledge in scenarios (via overlay).",
+  "identity": { "name": "Priya Nair", "title": "Backend Engineer", "reports_to": "org.pm_b" },
+  "voice": "Terse, precise, a little defensive when pressed. Engineer shorthand.",
+  "allowed_intents": ["greet","ask_status","ask_eta","request_help","offer_help","report_blocker","handoff","acknowledge","smalltalk"],
+  "view_scope": {
+    "people": ["org.pm_b","org.fs_b1","org.be_b3","org.fe_a1","org.sre"],
+    "projects": ["*assigned"],
+    "channels": ["chan.*:member"]
+  },
+  "behavior": {
+    "work_hours": { "start": "09:00", "end": "18:00" },
+    "response_delay": { "dist": "lognormal", "min_min": 15, "mode_min": 90, "max_min": 360 },
+    "wakeup_cadence": { "every_sim_hours": 4, "action": "replan_against_goals" }
+  }
+}

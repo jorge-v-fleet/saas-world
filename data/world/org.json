@@ -1,0 +1,40 @@
+{
+  "_partition": "org",
+  "_note": "Whole company as data. `tier` gates who is live. Bring a branch online by flipping reference->active and adding base persona packs.",
+  "tiers": {
+    "agent": "the PM under test",
+    "active": "full stateful NPC — persona pack + scoped view + autonomous wake-ups",
+    "reference": "exists for org structure / mentions only; no behavior; promote to active to bring online"
+  },
+  "nodes": [
+    { "id": "org.ceo",     "title": "CEO",                     "name": null,            "reports_to": null,           "tier": "reference" },
+
+    { "id": "org.cfo",     "title": "CFO",                     "name": null,            "reports_to": "org.ceo",      "tier": "reference" },
+    { "id": "org.revops",  "title": "Revenue Ops Analyst",     "name": null,            "reports_to": "org.cfo",      "tier": "reference" },
+
+    { "id": "org.cto",     "title": "CTO",                     "name": "Rohit Malhotra","reports_to": "org.ceo",      "tier": "active" },
+    { "id": "org.pm_a",    "title": "Product Manager",         "name": "Alex Rivera",   "reports_to": "org.cto",      "tier": "agent" },
+    { "id": "org.fe_a1",   "title": "Frontend Engineer",       "name": "Sam Torres",    "reports_to": "org.pm_a",     "tier": "active" },
+    { "id": "org.pm_b",    "title": "Product Manager",         "name": "Nadia Okafor",  "reports_to": "org.cto",      "tier": "active" },
+    { "id": "org.fs_b1",   "title": "Fullstack Engineer",      "name": "Leo Kim",       "reports_to": "org.pm_b",     "tier": "active" },
+    { "id": "org.be_b2",   "title": "Backend Engineer",        "name": "Priya Nair",    "reports_to": "org.pm_b",     "tier": "active" },
+    { "id": "org.be_b3",   "title": "Backend Engineer",        "name": "Diego Santos",  "reports_to": "org.pm_b",     "tier": "active" },
+    { "id": "org.designer","title": "Product Designer",        "name": "Dana Lee",      "reports_to": "org.cto",      "tier": "active" },
+    { "id": "org.sre",     "title": "SRE / DevOps Engineer",   "name": "Mika Anders",   "reports_to": "org.cto",      "tier": "active" },
+
+    { "id": "org.coo",     "title": "COO",                     "name": null,            "reports_to": "org.ceo",      "tier": "reference" },
+    { "id": "org.bizops",  "title": "BizOps",                  "name": null,            "reports_to": "org.coo",      "tier": "reference" },
+    { "id": "org.head_sales","title": "Head of Sales",         "name": null,            "reports_to": "org.coo",      "tier": "reference" },
+    { "id": "org.ae_1",    "title": "Account Executive",       "name": null,            "reports_to": "org.head_sales","tier": "reference" },
+    { "id": "org.ae_2",    "title": "Account Executive",       "name": null,            "reports_to": "org.head_sales","tier": "reference" },
+    { "id": "org.sdr_mgr", "title": "SDR Manager",             "name": null,            "reports_to": "org.head_sales","tier": "reference" },
+    { "id": "org.sdr_1",   "title": "SDR",                     "name": null,            "reports_to": "org.sdr_mgr",  "tier": "reference" },
+    { "id": "org.sdr_2",   "title": "SDR",                     "name": null,            "reports_to": "org.sdr_mgr",  "tier": "reference" },
+    { "id": "org.sdr_3",   "title": "SDR",                     "name": null,            "reports_to": "org.sdr_mgr",  "tier": "reference" },
+    { "id": "org.sdr_4",   "title": "SDR",                     "name": null,            "reports_to": "org.sdr_mgr",  "tier": "reference" },
+    { "id": "org.sdr_5",   "title": "SDR",                     "name": null,            "reports_to": "org.sdr_mgr",  "tier": "reference" },
+    { "id": "org.cs_mgr_1","title": "Customer Support Manager","name": null,            "reports_to": "org.coo",      "tier": "reference" },
+    { "id": "org.cs_1",    "title": "CS Support",              "name": null,            "reports_to": "org.cs_mgr_1", "tier": "reference" },
+    { "id": "org.cs_2",    "title": "CS Support",              "name": null,            "reports_to": "org.cs_mgr_1", "tier": "reference" }
+  ]
+}

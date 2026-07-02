@@ -1,0 +1,17 @@
+{
+  "_partition": "company",
+  "_note": "Company identity + stage. `modules` are the extension seams: reserved, namespaced, disabled until a scenario needs them. Enabling one never touches existing partitions.",
+  "company": {
+    "id": "co.nimbus",
+    "name": "Nimbus",
+    "product": "B2B analytics SaaS",
+    "headcount": 45,
+    "stage": "series-b"
+  },
+  "modules": {
+    "core":        { "enabled": true,  "partitions": ["org", "projects", "tasks", "blockers", "surfaces"] },
+    "customers":   { "enabled": false, "id_ns": "cust.", "note": "tier-1 (35, ~70% rev) / tier-2 (80, ~25%) / tier-3 (50, ~5%)" },
+    "financials":  { "enabled": false, "id_ns": "fin.",  "note": "MRR / burn / runway metrics" },
+    "seasonality": { "enabled": false, "id_ns": "seas.", "note": "historical sales cycles, industry events" }
+  }
+}

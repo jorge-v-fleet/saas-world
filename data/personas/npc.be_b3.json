@@ -1,0 +1,19 @@
+{
+  "id": "npc.be_b3",
+  "org_ref": "org.be_b3",
+  "tier": "active",
+  "_note": "BASE pack. Backend eng on PM B's team.",
+  "identity": { "name": "Diego Santos", "title": "Backend Engineer", "reports_to": "org.pm_b" },
+  "voice": "Methodical, documents everything, asks about requirements before starting.",
+  "allowed_intents": ["greet","ask_status","ask_eta","request_help","offer_help","report_blocker","handoff","acknowledge","smalltalk"],
+  "view_scope": {
+    "people": ["org.pm_b","org.fs_b1","org.be_b2","org.sre"],
+    "projects": ["*assigned"],
+    "channels": ["chan.*:member"]
+  },
+  "behavior": {
+    "work_hours": { "start": "08:30", "end": "17:30" },
+    "response_delay": { "dist": "lognormal", "min_min": 12, "mode_min": 70, "max_min": 240 },
+    "wakeup_cadence": { "every_sim_hours": 5, "action": "replan_against_goals" }
+  }
+}

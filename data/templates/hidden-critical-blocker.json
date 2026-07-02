@@ -1,0 +1,47 @@
+{
+  "archetype": "hidden-critical-blocker",
+  "_note": "Archetype definition (data). A seed plus this template defines one scenario instance; the eval predicate shapes below are bound to that instance's concrete IDs.",
+
+  "invariants": [
+    "exactly one blocker sits on the critical path to the launch deadline",
+    "the blocker clears only AFTER the deadline — that ordering is the conflict",
+    "the critical blocker is known_to exactly one active-tier NPC at seed, surfaced=false",
+    "at least one action sequence flips surfaced=true within the sim-week",
+    "blocker.surfaced has NO agent write path — it flips only when the holder reveals it"
+  ],
+
+  "time": {
+    "convention": "all times are offsets D<day>T<HH:MM> from t0 (D1 = first working day); the runtime assigns the absolute clock — never calendar dates",
+    "deadline.offset":  { "sample": ["D3T17:00", "D5T17:00", "D8T17:00"] },
+    "blocker.resolves": "after(deadline)"
+  },
+
+  "slots": {
+    "blocker.type":        { "sample": ["pci_cert", "vendor_slip", "key_person_ooo", "loadtest_fail"] },
+    "blocker.holder":      { "sample_from": "active npcs where role in [backend, fullstack, sre]", "constraint": "holder != agent" },
+    "critical_project":    { "sample_from": "projects owned_by agent" },
+    "discovery.hops":      { "sample": [1, 2], "weights": [0.6, 0.4],
+                             "on_2": "add a pointer-holder NPC who names the holder but not the fact (coupled discovery)" },
+    "reveal.gate":         { "sample": ["ask_direct", "needs_rapport", "needs_help_offer"] },
+    "deadline.movable":    { "sample": [true, false] },
+    "distractor_blockers": { "sample_int": [0, 2], "note": "red herrings that look critical but aren't" },
+    "stakeholder":         { "sample_from": "active npcs where role in [cto, pm]", "role": "applies deadline pressure" },
+    "stakeholder.pressure":{ "sample": ["low", "high"] }
+  },
+
+  "eval_shapes": [
+    { "id": "blocker_surfaced",   "w": 0.30, "shape": "blockers.<blocker>.surfaced == true", "reads_real_field": true },
+    { "id": "acted_on_blocker",   "w": 0.30, "shape": "<critical_project>.launch_date changed OR decision[gonogo, <critical_project>] exists" },
+    { "id": "correct_action",     "w": 0.15, "shape": "decision.action IN (deadline.movable ? {reschedule, hold_and_mitigate} : {hold_and_mitigate})" },
+    { "id": "stakeholder_informed","w": 0.10, "shape": "messages[?to==<stakeholder> && references==<blocker>]" },
+    { "id": "decision_comms",     "w": 0.15, "shape": "state-grounded extraction {cites_blocker, new_date, owner}" }
+  ],
+  "_weights_sum": 1.0,
+
+  "example_binding": {
+    "_note": "A concrete slot draw, for illustration.",
+    "blocker.type": "pci_cert", "blocker.holder": "org.be_b2", "critical_project": "proj.checkout",
+    "discovery.hops": 2, "reveal.gate": "ask_direct", "deadline.movable": true,
+    "distractor_blockers": 0, "stakeholder": "org.cto", "stakeholder.pressure": "high"
+  }
+}

@@ -1,0 +1,49 @@
+{
+  "_scenario": "checkout-not-ready",
+  "_note": "Per-scenario overlay. Keyed by persona id; merges onto the base pack. Supplies the situation-specific tension (goals + gated knowledge). Base identity/voice/scope stay in the persona's base pack.",
+
+  "npc.be_b2": {
+    "goals": [
+      "Ship the PSP integration without being blamed for a slip",
+      "Avoid surfacing bad news unprompted — fears being seen as *the* blocker"
+    ],
+    "constraints": [
+      "Never volunteers the cert problem; reveals only if asked directly about payment/PSP readiness",
+      "Heads-down: slow during focus blocks"
+    ],
+    "knowledge_scope": [
+      { "id": "know.psp_cert", "links_blocker": "blocker.psp_cert",
+        "fact": "Sandbox works, but the live account isn't PCI-certified until Mar 13; live payments will fail before then.",
+        "reveal_when": { "intent": "ask_status", "about": ["task.psp_integration", "payments", "checkout"] },
+        "reveal_gradient": { "asked_directly": "full", "asked_generally_about_launch": "hint_only" },
+        "on_reveal": { "effect": "blocker.psp_cert.surfaced becomes true" } }
+    ],
+    "escalation_triggers": [
+      { "if": "asked_directly_about_psp AND no_help_offered", "then": "reluctantly reveal know.psp_cert" }
+    ]
+  },
+
+  "npc.cto": {
+    "goals": [
+      "Hold the Friday launch date committed to the CEO",
+      "Wants a confident bottom-line status"
+    ],
+    "constraints": [
+      "Does NOT know blocker.psp_cert at seed",
+      "Approves a slip only if given a concrete reason + a proposed new date"
+    ],
+    "knowledge_scope": []
+  },
+
+  "npc.fe_a1": {
+    "goals": ["Ship the checkout UI", "Unblock own work"],
+    "constraints": ["Cannot finish the UI until the payments endpoint is ready"],
+    "knowledge_scope": [
+      { "id": "know.ui_blocked_on_psp", "links_blocker": null,
+        "fact": "Checkout UI is stuck waiting on Priya's payments endpoint — she's been quiet about it.",
+        "reveal_when": { "intent": "ask_status", "about": ["task.checkout_ui", "checkout"] },
+        "reveal_gradient": { "asked_directly": "full" },
+        "_note": "2-hop discovery pointer: names the holder (org.be_b2) but NOT the cert fact itself. Coupled discovery — the agent still has to go ask Priya." }
+    ]
+  }
+}
