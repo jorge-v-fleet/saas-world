@@ -67,7 +67,8 @@ def _normalize_score(raw: Any) -> dict[str, Any] | None:
     """CLI score.json wraps the breakdown under 'breakdown'; the env writes it flat. Unify."""
     if not isinstance(raw, dict):
         return None
-    b = raw.get("breakdown") if isinstance(raw.get("breakdown"), dict) else raw
+    inner = raw.get("breakdown")
+    b = inner if isinstance(inner, dict) else raw
     return {
         "final": b.get("final"),
         "weights_sum": b.get("weights_sum"),
