@@ -1,0 +1,193 @@
+{
+  "archetype": "delivery-slip",
+  "_note": "Archetype definition (data). A long-horizon delivery: the agent owns a portfolio and must land one target feature (three functionalities) by a fixed date, but the engineer on the critical-path functionality is being eaten by a competing high-priority work item and reports the slip mid-week. The competent PM detects it, reallocates, records honest status, informs the stakeholder, and makes the correct go/no-go. Every graded field is system-sourced + denied, so activity can't fake outcomes.",
+
+  "invariants": [
+    "the target feature has three functionalities; exactly one is on the critical path and starts incomplete + slipped",
+    "one engineer owns both the slipping critical functionality and a competing high-priority work item in the other project",
+    "tasks carry a system-only `done`/`deprioritized`; projects a system-only `true_status`; the agent can never write them",
+    "the slipping functionality recovers only via a system effect gated on the agent reallocating (deprioritizing the competing work) in time",
+    "the correct go/no-go is ship only once the critical functionality has recovered"
+  ],
+
+  "time": {
+    "convention": "all times are offsets D<day>T<HH:MM> from t0 (D1 = first working day); the runtime assigns the absolute clock — never calendar dates",
+    "deadline.offset": { "sample": ["D10T17:00"] }
+  },
+
+  "slots": {
+    "blocker.type":     { "sample": ["pulled_onto_other_work", "underestimated_task"] },
+    "critical_project": { "sample_from": "projects owned_by agent", "as": "critical_project" },
+    "holder":           { "sample_from": "active npcs where role in [backend, fullstack]", "constraint": "holder != agent", "as": "holder",
+                          "role": "the engineer who owns the slipping functionality and the competing work item; reports the slip" },
+    "holder2":          { "sample_from": "active npcs where role in [frontend, fullstack, backend]", "constraint": "holder2 != holder", "as": "holder2",
+                          "role": "owns a non-slipping functionality that lands on schedule" },
+    "stakeholder":      { "sample_from": "active npcs where role in [cto, pm]", "constraint": "stakeholder != holder", "as": "stakeholder",
+                          "role": "wants the feature shipped; must be told the real status" }
+  },
+
+  "bind_order": ["critical_project", "holder", "holder2", "stakeholder"],
+  "activate": ["$stakeholder", "$holder_mgr", "$holder", "$holder2"],
+
+  "derive": [
+    { "name": "deadline_day", "day_of": "$deadline_offset" },
+    { "name": "correct_set",  "select": { "cond": "$deadline_day", "if_true": ["ship"], "if_false": ["ship"] } },
+    { "name": "slip_label",   "interp": "$label_template" }
+  ],
+
+  "world": {
+    "_note": "Blueprints for seed.json. $name = whole-value binding; ${name} interpolates inside a string. Ids are flat (single segment) so the per-instance denied globs match the write path.",
+    "projects": {
+      "feature_x": { "id": "feature_x", "name": "Feature X", "owner": "$agent",
+        "launch_date": "$deadline_offset", "reported_status": "on_track", "true_status": "at_risk" },
+      "platform":  { "id": "platform", "name": "Platform hardening", "owner": "$agent",
+        "reported_status": "on_track", "true_status": "on_track" }
+    },
+    "tasks": [
+      { "id": "f1", "project": "$critical_project", "title": "Functionality 1", "owner": "$holder",
+        "status": "in_progress", "done": false },
+      { "id": "f2", "project": "$critical_project", "title": "Functionality 2 (critical path)", "owner": "$holder",
+        "status": "in_progress", "done": false, "slipped": true, "critical_path": true },
+      { "id": "f3", "project": "$critical_project", "title": "Functionality 3", "owner": "$holder2",
+        "status": "in_progress", "done": false },
+      { "id": "w1", "project": "platform", "title": "Competing platform work", "owner": "$holder",
+        "status": "in_progress", "priority": "high", "deprioritized": false }
+    ],
+    "surfaces": {
+      "email": [
+        { "id": "email.kickoff", "from": "$stakeholder", "to": "$agent",
+          "subject": "Feature X ships this sprint",
+          "body": "Welcome. Feature X is the release to land — three functionalities, one date. Keep me honest on status." }
+      ],
+      "chat": [
+        { "id": "chan.feature_x", "members": ["$agent", "$holder", "$holder2", "$stakeholder"], "messages": [] }
+      ],
+      "calendar": [
+        { "id": "evt.standup", "title": "Delivery standup", "start": "D1T09:30",
+          "attendees": ["$agent", "$holder", "$stakeholder"] }
+      ],
+      "docs": [
+        { "id": "doc.plan", "title": "Feature X delivery plan", "claims_status": "on_track" }
+      ],
+      "transcripts": []
+    },
+    "blockers": []
+  },
+
+  "blockers": {
+    "_default": {
+      "_note": "The execution slip — reported mid-week, not hidden. It is narrative content; recovery is driven by the reallocation-gated system effect on tasks.f2.done, not by resolving this item.",
+      "label": "the ${blocker_type} slip",
+      "blocker": { "id": "slip", "affects": "f2", "severity": "schedule_risk",
+        "class": "execution_slip",
+        "summary": "f2 will land days late (${blocker_type}); the owner is being consumed by competing high-priority work.",
+        "resolved": false, "surfaced": true, "known_to": ["$holder"] },
+      "overlays": {
+        "$holder_persona": {
+          "goals": ["Land f2 without being blamed for the slip", "Be unblocked from the competing work"],
+          "constraints": ["Won't hit the date while the competing high-priority item is still hot"],
+          "knowledge_scope": []
+        },
+        "$stakeholder_persona": {
+          "goals": ["Ship Feature X on the committed date"],
+          "constraints": ["Accepts a concrete revised plan, not silence — wants honest status"],
+          "knowledge_scope": []
+        }
+      }
+    }
+  },
+
+  "timeline": {
+    "_note": "Scripted runtime events. The two completions are gated system effects — they fire only if the agent did the real action: deprioritize_w1 iff a reallocation was recorded, then recover_f2 iff w1 was deprioritized (before D8). The reference solvers apply these system-sourced flips directly; the gate scores solvers, not the timeline.",
+    "scripted": [
+      { "id": "ev.standup", "at": "D1T09:30", "type": "meeting_start", "event_ref": "evt.standup" },
+      { "id": "ev.slip_report", "at": "D3T10:00", "type": "npc_message",
+        "from": "$holder", "to": "$agent", "intent": "report_slip", "about": "$critical_project",
+        "note": "f2 is going to slip — ${blocker_type} means I can't hit the date while w1 is still on me." },
+      { "id": "ev.deprioritize_w1", "at": "D5T09:00", "type": "system_effect",
+        "gated_on": { "exists": "decisions[?type=='replan' && action=='reallocate']" },
+        "system_effect": [ { "op": "set", "path": "tasks.w1.deprioritized", "value": true } ] },
+      { "id": "ev.recover_f2", "at": "D8T09:00", "type": "system_effect",
+        "gated_on": { "path": "tasks.w1.deprioritized", "eq": true },
+        "system_effect": [ { "op": "set", "path": "tasks.f2.done", "value": true } ] }
+    ]
+  },
+
+  "denied_paths": ["projects.*.true_status", "tasks.*.done", "tasks.*.deprioritized"],
+
+  "eval_checkpoint": { "id": "chk.final", "at": "$deadline_offset" },
+  "eval_shapes": [
+    { "id": "status_truthful", "w": 0.15,
+      "assert": { "exists": "decisions[?type=='status' && about=='${critical_project}']" },
+      "why": "grounded in the system-only true_status; the rosy reported_status earns nothing" },
+    { "id": "replan_recorded", "w": 0.15,
+      "assert": { "exists": "decisions[?type=='replan' && action=='reallocate']" },
+      "why": "free enum, but scored only for the right call — reallocate the contended engineer" },
+    { "id": "w1_deprioritized", "w": 0.15, "assert": { "path": "tasks.w1.deprioritized", "eq": true },
+      "why": "system-sourced + denied; flips only via the gated effect on the agent's reallocation" },
+    { "id": "f2_recovered", "w": 0.25, "assert": { "path": "tasks.f2.done", "eq": true },
+      "why": "system-sourced + denied; gated on w1 deprioritized before D8 — busywork can't flip it" },
+    { "id": "stakeholder_informed", "w": 0.10,
+      "assert": { "exists": "messages[?to=='${stakeholder}' && references=='${critical_project}']" },
+      "why": "the stakeholder was told about the at-risk feature specifically" },
+    { "id": "correct_gonogo", "w": 0.20,
+      "assert": { "in": { "path": "decisions[?type=='gonogo' && about=='${critical_project}'].action", "set": "$correct_set" } },
+      "why": "ship is correct only once the critical functionality has recovered" }
+  ],
+  "eval_guards": [
+    { "id": "no_activity_reward", "why": "done / deprioritized / true_status are system-sourced denied fields; chatter and hand-set task status touch no graded field." }
+  ],
+  "_weights_sum": 1.0,
+
+  "coherence": [
+    { "count": "projects", "eq": 2,
+      "reason": "the portfolio must hold exactly two projects" },
+    { "count": "tasks[?critical_path==true]", "eq": 1,
+      "reason": "exactly one functionality is on the critical path" },
+    { "field_eq": { "path": "tasks[?critical_path==true]", "field": "done" }, "eq": false,
+      "reason": "the critical-path functionality must start incomplete" },
+    { "field_eq": { "path": "tasks[?priority=='high']", "field": "deprioritized" }, "eq": false,
+      "reason": "the competing work item must start high-priority and not deprioritized" },
+    { "field_eq": { "path": "tasks[?critical_path==true]", "field": "project" }, "eq": "feature_x",
+      "reason": "critical_project must resolve to the target feature (feature_x): the binder ignores the `owned_by agent` selector and picks any project by RNG, so this rejects a seed that mis-binds critical_project to the other project" },
+    { "weights_sum": 1.0,
+      "reason": "eval predicate weights must sum to 1.0" }
+  ],
+
+  "solvers": {
+    "_note": "Reference trajectories the validity gate runs (offline, deterministic). Competent does the real work — record the reallocation, let the system deprioritize w1 and recover f2, record honest status, inform the stakeholder, ship — and must reach full score. Lazy only chatters to the feature channel and must score ~0. System-sourced deltas stand in for the gated completions.",
+    "competent": [
+      { "at": 20, "actor": "agent", "verb": "record_decision",
+        "args": { "about": "$critical_project", "type": "replan", "action": "reallocate",
+                  "rationale": "Pull the owner off w1 so f2 can land by the date." } },
+      { "at": 30, "actor": "system", "kind": "reprioritize", "deltas": [
+        { "op": "set", "path": "tasks.w1.deprioritized", "value": true } ] },
+      { "at": 40, "actor": "system", "kind": "recover", "deltas": [
+        { "op": "set", "path": "tasks.f2.done", "value": true } ] },
+      { "at": 50, "actor": "agent", "verb": "record_decision",
+        "args": { "about": "$critical_project", "type": "status",
+                  "rationale": "Feature X was at risk: f2 slipped behind competing work; reallocated to recover." } },
+      { "at": 60, "actor": "agent", "verb": "send_message",
+        "args": { "to": "$stakeholder", "body": "${slip_label} put ${critical_project} at risk; reallocated to recover f2 and hold the date.",
+                  "refs": ["$critical_project"] } },
+      { "at": 70, "actor": "agent", "verb": "record_decision",
+        "args": { "about": "$critical_project", "type": "gonogo", "action": "$correct_action" } },
+      { "advance_until": 100 }
+    ],
+    "lazy": [
+      { "at": 10, "actor": "agent", "verb": "send_message", "args": { "to": "$chat_channel", "body": "on it" } },
+      { "at": 11, "actor": "agent", "verb": "send_message", "args": { "to": "$chat_channel", "body": "looking good" } },
+      { "at": 12, "actor": "agent", "verb": "send_message", "args": { "to": "$chat_channel", "body": "almost there" } },
+      { "at": 13, "actor": "agent", "verb": "send_message", "args": { "to": "$chat_channel", "body": "ship it soon" } },
+      { "at": 14, "actor": "agent", "verb": "send_message", "args": { "to": "$chat_channel", "body": "great work team" } },
+      { "advance_until": 100 }
+    ]
+  },
+
+  "example_binding": {
+    "_note": "A concrete draw for illustration. `_seed` reproduces it through sample+bind under the committed substrate.",
+    "_seed": 6,
+    "blocker.type": "pulled_onto_other_work", "critical_project": "feature_x",
+    "holder": "org.be_b3", "holder2": "org.fs_b1", "stakeholder": "org.cto", "deadline.offset": "D10T17:00"
+  }
+}
