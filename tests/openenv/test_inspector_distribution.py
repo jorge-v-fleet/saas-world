@@ -1,5 +1,5 @@
 """Distribution (cohort stats): the /api/cohort endpoint aggregates a folder of runs into
-reward stats, per-archetype means±CI, checkpoint pass-rates + heatmap, and a reward-hack scatter;
+reward stats, per-family means±CI, checkpoint pass-rates + heatmap, and a reward-hack scatter;
 the SPA wires the real DistributionView into the tool registry.
 """
 
@@ -28,13 +28,15 @@ def _score(p1_pass: bool, p2_pass: bool) -> dict:
             "artifact_results": []}
 
 
-def _run(base: Path, name: str, *, archetype: str, reward: float, msgs: int,
-         p1: bool, p2: bool, events: list | None) -> None:
+def _run(base: Path, name: str, *, archetype: str | None, reward: float, msgs: int,
+         p1: bool, p2: bool, events: list | None, scenario: str | None = None) -> None:
     d = base / name
     d.mkdir(parents=True, exist_ok=True)
-    (d / "manifest.json").write_text(json.dumps(
-        {"kind": "random", "scenario": archetype, "archetype": archetype,
-         "final_reward": reward, "actions": msgs + 1}))
+    manifest = {"kind": "random", "scenario": scenario or archetype,
+                "final_reward": reward, "actions": msgs + 1}
+    if archetype is not None:  # variant runs carry only a `-N` scenario, no archetype
+        manifest["archetype"] = archetype
+    (d / "manifest.json").write_text(json.dumps(manifest))
     rows = [{"turn": 0, "verb": "wait", "args": {}, "error": None}]
     for i in range(msgs):
         rows.append({"turn": i + 1, "verb": "send_message", "args": {}, "error": None})
@@ -75,10 +77,10 @@ def test_cohort_endpoint(tmp_path: Path, monkeypatch) -> None:
     assert d["ci_low"] <= d["mean"] <= d["ci_high"]
     assert len(d["reward_hist"]) == 10 and sum(d["reward_hist"]) == 4
 
-    arch = {r["archetype"]: r for r in d["per_archetype"]}
-    assert set(arch) == {"delivery-slip", "release-triage"}
-    assert arch["delivery-slip"]["n"] == 2
-    assert arch["delivery-slip"]["reward_ci_low"] is not None
+    fam = {r["family"]: r for r in d["per_family"]}
+    assert set(fam) == {"delivery-slip", "release-triage"}
+    assert fam["delivery-slip"]["n"] == 2
+    assert fam["delivery-slip"]["reward_ci_low"] is not None
 
     per_id = {p["id"]: p for p in d["checkpoints"]["per_id"]}
     assert per_id["a.done"]["n"] == 4 and per_id["a.done"]["pass"] == 2
@@ -101,7 +103,23 @@ def test_cohort_endpoint(tmp_path: Path, monkeypatch) -> None:
 def test_cohort_empty_missing(tmp_path: Path, monkeypatch) -> None:
     monkeypatch.setenv("SAASWORLD_RUNS_DIR", str(tmp_path))
     d = TestClient(create_env_app()).get("/inspector/api/cohort?folder=nope").json()
-    assert d["n"] == 0 and d["rewards"] == [] and d["per_archetype"] == []
+    assert d["n"] == 0 and d["rewards"] == [] and d["per_family"] == []
+
+
+def test_cohort_family_aggregates_variants(tmp_path: Path, monkeypatch) -> None:
+    """Generated variants (scenario `delivery-slip-3`, no archetype field) fold into one family."""
+    monkeypatch.setenv("SAASWORLD_RUNS_DIR", str(tmp_path))
+    gen = tmp_path / "generated"
+    _run(gen, "v1", archetype=None, scenario="delivery-slip-3", reward=0.4, msgs=1,
+         p1=True, p2=False, events=None)
+    _run(gen, "v2", archetype=None, scenario="delivery-slip-17", reward=0.6, msgs=1,
+         p1=True, p2=True, events=None)
+    _run(gen, "v3", archetype=None, scenario="release-triage-0", reward=0.2, msgs=1,
+         p1=False, p2=False, events=None)
+    d = TestClient(create_env_app()).get("/inspector/api/cohort?folder=generated").json()
+    fam = {r["family"]: r for r in d["per_family"]}
+    assert set(fam) == {"delivery-slip", "release-triage"}   # -N variants collapsed
+    assert fam["delivery-slip"]["n"] == 2 and fam["release-triage"]["n"] == 1
 
 
 def test_spa_wires_real_distribution() -> None:

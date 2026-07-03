@@ -17,6 +17,7 @@ from __future__ import annotations
 import json
 import math
 import os
+import re
 from pathlib import Path
 from typing import Any
 
@@ -167,6 +168,17 @@ def _run_folder(run_id: str) -> str:
     return run_id[: run_id.rfind("/")] if "/" in run_id else "(root)"
 
 
+def _family(manifest: dict[str, Any]) -> str:
+    """Scenario family/template, aggregating generated variants: an explicit ``family``/``template``
+    field wins; else strip a trailing ``-<n>`` variant suffix off archetype/scenario
+    (``delivery-slip-13`` → ``delivery-slip``, ``checkout-not-ready`` unchanged)."""
+    fam = manifest.get("family") or manifest.get("template")
+    if fam:
+        return str(fam)
+    s = manifest.get("archetype") or manifest.get("scenario")
+    return re.sub(r"-\d+$", "", str(s)) if s else "(unknown)"
+
+
 def _stats(vals: list[float]) -> dict[str, Any]:
     n = len(vals)
     if not n:
@@ -205,7 +217,7 @@ def _n_real_deltas(d: Path, rows: list[dict[str, Any]]) -> int:
 def get_cohort(folder: str) -> JSONResponse:
     base = _runs_dir()
     empty = {"folder": folder, "n": 0, "rewards": [], "reward_hist": [0] * 10,
-             "per_archetype": [], "checkpoints": [], "scatter": [],
+             "per_family": [], "checkpoints": [], "scatter": [],
              "mean": None, "min": None, "max": None, "stddev": 0.0,
              "ci_low": None, "ci_high": None}
     if not base.is_dir():
@@ -217,7 +229,7 @@ def get_cohort(folder: str) -> JSONResponse:
         return JSONResponse(empty)
 
     rewards: list[float] = []
-    by_arch: dict[str, list[float]] = {}
+    by_family: dict[str, list[float]] = {}
     pred_n: dict[str, int] = {}
     pred_pass: dict[str, int] = {}
     heatmap: list[dict[str, Any]] = []
@@ -233,8 +245,7 @@ def get_cohort(folder: str) -> JSONResponse:
 
         if isinstance(reward, (int, float)):
             rewards.append(float(reward))
-            arch = manifest.get("archetype") or manifest.get("scenario") or run_id
-            by_arch.setdefault(arch, []).append(float(reward))
+            by_family.setdefault(_family(manifest), []).append(float(reward))
 
         preds = [p for cp in (score or {}).get("checkpoints", []) for p in cp.get("predicates", [])]
         results: dict[str, int] = {}
@@ -255,12 +266,12 @@ def get_cohort(folder: str) -> JSONResponse:
             "reward": reward if isinstance(reward, (int, float)) else None,
         })
 
-    per_archetype = []
-    for arch in sorted(by_arch):
-        s = _stats(by_arch[arch])
-        per_archetype.append({"archetype": arch, "n": len(by_arch[arch]),
-                              "reward_mean": s["mean"], "reward_ci_low": s["ci_low"],
-                              "reward_ci_high": s["ci_high"]})
+    per_family = []
+    for fam in sorted(by_family):
+        s = _stats(by_family[fam])
+        per_family.append({"family": fam, "n": len(by_family[fam]),
+                           "reward_mean": s["mean"], "reward_ci_low": s["ci_low"],
+                           "reward_ci_high": s["ci_high"]})
     checkpoints = [{"id": pid, "n": pred_n[pid], "pass": pred_pass[pid],
                     "pass_rate": pred_pass[pid] / pred_n[pid]}
                    for pid in sorted(pred_n)]
@@ -268,7 +279,7 @@ def get_cohort(folder: str) -> JSONResponse:
     return JSONResponse({
         "folder": folder, "n": len(dirs), "rewards": rewards,
         "reward_hist": _reward_hist(rewards), **_stats(rewards),
-        "per_archetype": per_archetype,
+        "per_family": per_family,
         "checkpoints": {"per_id": checkpoints, "heatmap": heatmap},
         "scatter": scatter,
     })

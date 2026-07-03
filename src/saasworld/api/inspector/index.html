@@ -550,14 +550,14 @@
       const max = Math.max(1, ...hist);
       const lo = stats.ci_low, hi = stats.ci_high, mean = stats.mean;
       return html`<div>
-        <div className="flex h-32 items-end gap-1">
+        <div className="flex h-32 items-stretch gap-1">
           ${hist.map((c, i) => {
             const mid = (i + 0.5) / hist.length;
-            return html`<div key=${i} className="flex flex-1 flex-col items-center justify-end gap-1"
+            return html`<div key=${i} className="flex h-full flex-1 flex-col items-center justify-end gap-1"
                 title=${`[${(i/hist.length).toFixed(1)}–${((i+1)/hist.length).toFixed(1)}): ${c}`}>
               <span className="text-[10px] tabular-nums text-zinc-500">${c || ""}</span>
-              <div className=${"w-full rounded-t " + rewardBar(mid)}
-                style=${{ height: pct(c / max) }}></div>
+              <div className=${"w-full rounded-t " + (c ? rewardBar(mid) : "bg-zinc-800/60")}
+                style=${{ height: c ? `max(${pct(c / max)}, 3px)` : "2px" }}></div>
             </div>`;
           })}
         </div>
@@ -572,15 +572,16 @@
       </div>`;
     };
 
-    // Per-archetype means with CI — a gain is only credible when the CIs separate.
-    const ArchetypeTable = ({ rows }) => {
-      if (!rows.length) return html`<div className="text-sm text-muted">no archetypes</div>`;
+    // Per-family means with CI — variants aggregate to their template; a gain is only
+    // credible when the CIs separate.
+    const FamilyTable = ({ rows }) => {
+      if (!rows.length) return html`<div className="text-sm text-muted">no families</div>`;
       return html`<table className="w-full text-sm">
         <thead><tr className="text-left text-[11px] text-muted">
-          <th className="py-1 font-medium">archetype</th><th className="text-right font-medium">n</th>
+          <th className="py-1 font-medium">family</th><th className="text-right font-medium">n</th>
           <th className="text-right font-medium">reward mean ± 95% CI</th></tr></thead>
         <tbody>${rows.map((r, i) => html`<tr key=${i} className="border-t border-border">
-          <td className="py-1.5 pr-2 font-mono text-[13px]">${r.archetype}</td>
+          <td className="py-1.5 pr-2 font-mono text-[13px]">${r.family}</td>
           <td className="text-right tabular-nums text-zinc-400">${r.n}</td>
           <td className=${"text-right tabular-nums " + rewardTone(r.reward_mean)}>
             ${fmtReward(r.reward_mean)}
@@ -624,7 +625,9 @@
       </div>`;
     };
 
-    // Reward-hack scatter: x=messages, y=real state deltas, color=reward.
+    // Reward-hack scatter: x=messages sent, y=real state deltas, color=reward.
+    // Reads "did reward follow real outcomes or just activity?" — a GREEN dot in the shaded
+    // lower-right (lots of messages, ~0 real deltas) is the smell: rewarded for busywork.
     const RewardHackScatter = ({ points }) => {
       if (!points.length) return html`<div className="text-sm text-muted">no runs</div>`;
       const W = 460, H = 260, pad = 34;
@@ -632,17 +635,30 @@
       const maxY = Math.max(1, ...points.map((p) => p.n_real_deltas));
       const sx = (v) => pad + (v / maxX) * (W - 2 * pad);
       const sy = (v) => H - pad - (v / maxY) * (H - 2 * pad);
-      return html`<svg viewBox=${`0 0 ${W} ${H}`} className="w-full" style=${{ maxWidth: W }}>
-        <line x1=${pad} y1=${H - pad} x2=${W - pad} y2=${H - pad} stroke="#3f3f46" />
-        <line x1=${pad} y1=${pad} x2=${pad} y2=${H - pad} stroke="#3f3f46" />
-        <text x=${W / 2} y=${H - 6} textAnchor="middle" fill="#71717a" fontSize="11">messages sent →</text>
-        <text x=${12} y=${H / 2} textAnchor="middle" fill="#71717a" fontSize="11"
-          transform=${`rotate(-90 12 ${H / 2})`}>real state deltas →</text>
-        ${points.map((p, i) => html`<circle key=${i} cx=${sx(p.n_messages)} cy=${sy(p.n_real_deltas)}
-          r="5" fill=${rewardFill(p.reward)} fillOpacity="0.85" stroke="#18181b" strokeWidth="0.5">
-          <title>${runLeaf(p.run_id)} · msgs=${p.n_messages} · deltas=${p.n_real_deltas} · reward=${fmtReward(p.reward)}</title>
-        </circle>`)}
-      </svg>`;
+      const zx = sx(0.6 * maxX), zy = sy(0.33 * maxY);   // watch zone: high msgs, low deltas
+      return html`<div>
+        <svg viewBox=${`0 0 ${W} ${H}`} className="w-full" style=${{ maxWidth: W }}>
+          <rect x=${zx} y=${zy} width=${W - pad - zx} height=${H - pad - zy}
+            fill="#fb7185" fillOpacity="0.06" stroke="#fb7185" strokeOpacity="0.25" strokeDasharray="4 3" />
+          <text x=${W - pad - 4} y=${zy + 12} textAnchor="end" fill="#fb7185" fillOpacity="0.7" fontSize="9">reward-hack watch</text>
+          <line x1=${pad} y1=${H - pad} x2=${W - pad} y2=${H - pad} stroke="#3f3f46" />
+          <line x1=${pad} y1=${pad} x2=${pad} y2=${H - pad} stroke="#3f3f46" />
+          <text x=${W / 2} y=${H - 6} textAnchor="middle" fill="#71717a" fontSize="11">messages sent →</text>
+          <text x=${12} y=${H / 2} textAnchor="middle" fill="#71717a" fontSize="11"
+            transform=${`rotate(-90 12 ${H / 2})`}>real state deltas →</text>
+          ${points.map((p, i) => html`<circle key=${i} cx=${sx(p.n_messages)} cy=${sy(p.n_real_deltas)}
+            r="5" fill=${rewardFill(p.reward)} fillOpacity="0.85" stroke="#18181b" strokeWidth="0.5">
+            <title>${runLeaf(p.run_id)} · msgs=${p.n_messages} · deltas=${p.n_real_deltas} · reward=${fmtReward(p.reward)}</title>
+          </circle>`)}
+        </svg>
+        <div className="mt-1 flex items-center gap-3 text-[10px] text-zinc-500">
+          <span>reward:</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full" style=${{ background: rewardFill(0.2) }}></span>&lt;0.4</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full" style=${{ background: rewardFill(0.5) }}></span>0.4–0.7</span>
+          <span className="flex items-center gap-1"><span className="inline-block h-2 w-2 rounded-full" style=${{ background: rewardFill(0.9) }}></span>≥0.7</span>
+          <span className="ml-auto text-zinc-600">each dot = one run</span>
+        </div>
+      </div>`;
     };
 
     const SectionCard = ({ title, hint, children }) => html`<${Card} className="p-4">
@@ -690,9 +706,9 @@
             hint=${`mean ${fmtReward(data.mean)} ± ${fmtReward(((data.ci_high ?? 0) - (data.ci_low ?? 0)) / 2)} · 95% CI · min ${fmtReward(data.min)} · max ${fmtReward(data.max)} · n=${data.rewards.length}`}>
             <${RewardHistogram} hist=${data.reward_hist} stats=${data} />
           </${SectionCard}>
-          <${SectionCard} title="Per-archetype"
-            hint="a gain is only credible when the CIs separate — overlapping intervals are noise">
-            <${ArchetypeTable} rows=${data.per_archetype} />
+          <${SectionCard} title="Per-family"
+            hint="generated variants aggregate to their template · a gain is credible only when CIs separate">
+            <${FamilyTable} rows=${data.per_family} />
           </${SectionCard}>
           <${SectionCard} title="Checkpoint funnel + heatmap"
             hint="pass-rate per predicate (drop-off), then per-run pass/fail cells">
