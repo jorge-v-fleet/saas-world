@@ -17,7 +17,7 @@ actions actually **improved outcomes**, not whether it was merely busy. Full bri
 The repo ships pre-built scenarios under `data/scenarios/`, so you just **start the env and drive an
 episode** — no build step, offline and key-free. From a clean checkout:
 
-```
+```bash
 # 1 · install
 uv venv && source .venv/bin/activate && uv pip install -e ".[dev]"
 

@@ -1,0 +1,28 @@
+{
+  "id": "delivery-slip-6",
+  "archetype": "delivery-slip",
+  "activate": [
+    "org.cto",
+    "org.pm_b",
+    "org.be_b3",
+    "org.fs_b1"
+  ],
+  "time": {
+    "day1_weekday": "Mon",
+    "horizon_days": 10
+  },
+  "provenance": {
+    "template_id": "delivery-slip",
+    "seed": 6,
+    "substrate_hash": "5ebaabc3f3a01ef4956599b530bf709a07665f661fa1dce7ecb0a0676bea055d",
+    "generator_version": "seed-engine/1",
+    "instance_hash": "sha256:0b57dc08449e6b0bd0e49e47754fa1c8a2ecda260037e9fecad2c9d0e4372422"
+  },
+  "denied_paths": [
+    "projects.*.true_status",
+    "tasks.*.done",
+    "tasks.*.deprioritized"
+  ],
+  "dataset_version": "sha256:0b57dc08449e6b0bd0e49e47754fa1c8a2ecda260037e9fecad2c9d0e4372422",
+  "frozen": true
+}

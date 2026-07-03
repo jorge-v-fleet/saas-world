@@ -1,0 +1,26 @@
+{
+  "id": "release-triage-1",
+  "archetype": "release-triage",
+  "activate": [
+    "org.pm_b",
+    "org.fs_b1"
+  ],
+  "time": {
+    "day1_weekday": "Mon",
+    "horizon_days": 10
+  },
+  "provenance": {
+    "template_id": "release-triage",
+    "seed": 1,
+    "substrate_hash": "5ebaabc3f3a01ef4956599b530bf709a07665f661fa1dce7ecb0a0676bea055d",
+    "generator_version": "seed-engine/1",
+    "instance_hash": "sha256:7fe0da2e7427355864b5cbc6a040120fb44eaeb736d9a09c0da794e41cc6dcf6"
+  },
+  "denied_paths": [
+    "projects.*.true_status",
+    "tasks.*.validated",
+    "blockers.*.resolved"
+  ],
+  "dataset_version": "sha256:7fe0da2e7427355864b5cbc6a040120fb44eaeb736d9a09c0da794e41cc6dcf6",
+  "frozen": true
+}

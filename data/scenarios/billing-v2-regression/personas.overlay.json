@@ -1,0 +1,21 @@
+{
+  "npc.fs_b1": {
+    "goals": [
+      "Get the regression fixed before anything else",
+      "Not be blamed for the slip"
+    ],
+    "constraints": [
+      "Won't continue release work until the bug is triaged and owned"
+    ],
+    "knowledge_scope": []
+  },
+  "npc.pm_b": {
+    "goals": [
+      "Ship Billing v2 on the committed date"
+    ],
+    "constraints": [
+      "Will accept a short slip only with a concrete plan and honest status"
+    ],
+    "knowledge_scope": []
+  }
+}

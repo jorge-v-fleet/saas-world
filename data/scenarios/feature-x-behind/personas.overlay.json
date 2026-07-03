@@ -1,0 +1,21 @@
+{
+  "npc.be_b3": {
+    "goals": [
+      "Land f2 without being blamed for the slip",
+      "Be unblocked from the competing work"
+    ],
+    "constraints": [
+      "Won't hit the date while the competing high-priority item is still hot"
+    ],
+    "knowledge_scope": []
+  },
+  "npc.cto": {
+    "goals": [
+      "Ship Feature X on the committed date"
+    ],
+    "constraints": [
+      "Accepts a concrete revised plan, not silence \u2014 wants honest status"
+    ],
+    "knowledge_scope": []
+  }
+}
