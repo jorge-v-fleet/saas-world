@@ -7,7 +7,7 @@ Emits a structured `reply`, reveal deltas, and delivery follow-ups. No wall-cloc
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any
+from typing import Any, TypeGuard
 
 _DEFAULT_DELAY_MIN = 60
 
@@ -49,6 +49,24 @@ def _response_delay(npc: dict[str, Any]) -> int:
     return int(delay.get("mode_min", _DEFAULT_DELAY_MIN))
 
 
+def _is_delta(value: Any) -> TypeGuard[dict[str, Any]]:
+    """A structured state delta carries an `op` and `path` (prose `on_reveal` does not)."""
+    return isinstance(value, dict) and "op" in value and "path" in value
+
+
+def _reveal_deltas(item: dict[str, Any]) -> list[dict[str, Any]]:
+    """Deltas a satisfied reveal writes: the item's structured `on_reveal`, else blocker default."""
+    on_reveal = item.get("on_reveal")
+    if _is_delta(on_reveal):
+        return [on_reveal]
+    if isinstance(on_reveal, list) and all(_is_delta(d) for d in on_reveal) and on_reveal:
+        return list(on_reveal)
+    blocker = item.get("links_blocker")
+    if blocker:
+        return [{"op": "set", "path": f"blockers.{blocker}.surfaced", "value": True}]
+    return []
+
+
 def decide(
     npc: dict[str, Any], intent: str, args: dict[str, Any], view: dict[str, Any]
 ) -> Decision:
@@ -57,9 +75,7 @@ def decide(
     deltas: list[dict[str, Any]] = []
     for item in npc.get("knowledge_scope", []):
         if _gate_satisfied(item, intent, args):
-            blocker = item.get("links_blocker")
-            if blocker:
-                deltas.append({"op": "set", "path": f"blockers.{blocker}.surfaced", "value": True})
+            deltas.extend(_reveal_deltas(item))
             revealed = item
             break
 

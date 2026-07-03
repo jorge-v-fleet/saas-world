@@ -14,6 +14,8 @@ from pathlib import Path
 from typing import Any
 
 from ..content_hash import dataset_version
+from ..eval.predicates import holds
+from ..events import Event
 from ..kernel import Kernel
 from ..npc.engine import NPCEngine
 
@@ -128,7 +130,22 @@ def _timeline_payload(ev: dict[str, Any]) -> dict[str, Any]:
     if ev["type"] == "npc_message":
         msg = {k: ev[k] for k in ("from", "to", "intent", "about", "note") if k in ev}
         return {"deltas": [{"op": "append", "path": "messages", "value": msg}], "follow_ups": []}
+    if ev["type"] == "system_effect":
+        return {"gated_on": ev.get("gated_on"), "system_effect": ev.get("system_effect", [])}
     return {"deltas": [], "follow_ups": [], "event_ref": ev.get("event_ref")}
+
+
+def _system_effect(kernel: Kernel, event: Event) -> list[dict[str, Any]]:
+    """Gated completion: apply system-sourced deltas only if the gate holds at fire time.
+    The agent can never write these paths itself (they are denied), so the flip is un-gameable."""
+    payload = event.payload
+    gate = payload.get("gated_on")
+    if gate is not None and not holds(gate, state=kernel.state):
+        return []
+    deltas: list[dict[str, Any]] = payload.get("system_effect", [])
+    if deltas:
+        kernel.state.apply(deltas, source="system")
+    return deltas
 
 
 def load(path: str | Path, kernel: Kernel) -> LoadedScenario:
@@ -147,6 +164,9 @@ def load(path: str | Path, kernel: Kernel) -> LoadedScenario:
         raise ScenarioError(f"dataset_version mismatch: manifest {declared} != computed {version}")
 
     kernel.state.restore(_seed_world(seed))
+    set_denied = getattr(kernel.state, "set_denied_paths", None)
+    if set_denied is not None:  # per-instance guard globs layered on the base floor
+        set_denied(manifest.get("denied_paths"))
 
     engine = NPCEngine()
     packs = _personas_by_org()
@@ -156,6 +176,7 @@ def load(path: str | Path, kernel: Kernel) -> LoadedScenario:
             continue
         engine.register_npc(_merge(base, overlays.get(base["id"], {})))
     engine.attach(kernel)
+    kernel.register("system_effect", _system_effect)
 
     for ev in timeline.get("scripted", []):
         kernel.schedule(offset_to_minutes(ev["at"]), ev.get("from", "system"),

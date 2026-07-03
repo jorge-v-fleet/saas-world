@@ -12,7 +12,9 @@ from collections.abc import Callable
 from dataclasses import dataclass
 from typing import Any
 
+from ..eval import paths as _paths
 from ..state.guard import DENIED_PATHS
+from ..state.store import WorldState
 from . import solvers as _solvers
 from .assemble import FactMap, assemble
 from .bind import bind
@@ -60,34 +62,62 @@ def run_pipeline(
 
 
 def check_coherence(
-    seed_json: dict[str, Any], overlay: dict[str, Any], eval_json: dict[str, Any],
-    substrate: Substrate,
+    factmap: FactMap, eval_json: dict[str, Any], substrate: Substrate
 ) -> tuple[bool, str]:
-    """Pure invariants: one critical blocker, active holder, a reveal path, no write, weights."""
-    critical = [b for b in seed_json.get("blockers", []) if b.get("severity") == "launch_blocking"]
-    if len(critical) != 1:
-        return False, f"expected exactly one critical blocker, found {len(critical)}"
-    blk = critical[0]
-    known = blk.get("known_to", [])
-    if len(known) != 1:
-        return False, "critical blocker must be known_to exactly one NPC at seed"
-    person = substrate.people.get(known[0])
-    if person is None or person.tier != "active":
-        return False, f"holder {known[0]!r} is not an active-tier NPC"
-    if blk.get("surfaced") is not False:
-        return False, "critical blocker must start surfaced=false"
-    reveal = any(
-        item.get("links_blocker") == blk["id"] and item.get("reveal_when")
-        for ov in overlay.values() for item in ov.get("knowledge_scope", [])
-    )
-    if not reveal:
-        return False, "no NPC reveal path can flip surfaced"
-    if "blockers.*.surfaced" not in DENIED_PATHS:
-        return False, "surfaced has an agent write path"
-    total = _weights(eval_json)
-    if abs(total - 1.0) > _SCORE_EPS:
-        return False, f"eval weights sum to {total}, expected 1.0"
+    """Interpret the template's declarative invariants; first failure returns its `reason`."""
+    view = WorldState(dict(factmap.seed))
+    for inv in factmap.coherence:
+        if not _invariant_ok(inv, view, factmap, eval_json, substrate):
+            return False, str(inv["reason"])
     return True, "ok"
+
+
+def _one(node: Any) -> Any:
+    """The single matched item of a filter read (first of a list), or the scalar itself."""
+    if isinstance(node, list):
+        return node[0] if node else None
+    return node
+
+
+def _active(substrate: Substrate, pid: str) -> bool:
+    person = substrate.people.get(pid)
+    return person is not None and person.tier == "active"
+
+
+def _invariant_ok(
+    inv: dict[str, Any], view: WorldState, factmap: FactMap,
+    eval_json: dict[str, Any], substrate: Substrate,
+) -> bool:
+    """Evaluate one invariant against seed (via `view`) / overlay / eval / substrate / denied."""
+    if "count" in inv:
+        got = _paths.read(view, inv["count"])
+        return bool((len(got) if isinstance(got, list) else 0) == inv["eq"])
+    if "count_field" in inv:
+        spec = inv["count_field"]
+        item = _one(_paths.read(view, spec["path"]))
+        val = item.get(spec["field"], []) if isinstance(item, dict) else []
+        return bool(len(val) == inv["eq"])
+    if "field_eq" in inv:
+        spec = inv["field_eq"]
+        item = _one(_paths.read(view, spec["path"]))
+        return isinstance(item, dict) and item.get(spec["field"]) == inv["eq"]
+    if "holder_tier_active" in inv:
+        spec = inv["holder_tier_active"]
+        item = _one(_paths.read(view, spec["path"]))
+        ids = item.get(spec["field"], []) if isinstance(item, dict) else []
+        return bool(ids) and all(_active(substrate, pid) for pid in ids)
+    if "reveal_path_exists" in inv:
+        item = _one(_paths.read(view, inv["reveal_path_exists"]["blocker_path"]))
+        bid = item.get("id") if isinstance(item, dict) else None
+        return any(
+            k.get("links_blocker") == bid and k.get("reveal_when")
+            for ov in factmap.overlay.values() for k in ov.get("knowledge_scope", [])
+        )
+    if "denied_path" in inv:
+        return inv["denied_path"] in DENIED_PATHS  # module-level: honors a test monkeypatch
+    if "weights_sum" in inv:
+        return bool(abs(_weights(eval_json) - inv["weights_sum"]) <= _SCORE_EPS)
+    return False
 
 
 def _weights(eval_json: dict[str, Any]) -> float:
@@ -102,7 +132,7 @@ def evaluate(
     competent: Solver, lazy: Solver,
 ) -> Verdict:
     """Score the three gates for an already-assembled instance (no cache, no resample)."""
-    ok, reason = check_coherence(factmap.seed, factmap.overlay, eval_json, substrate)
+    ok, reason = check_coherence(factmap, eval_json, substrate)
     if not ok:
         return Verdict(False, False, False, False, reason)
     floor = competent(factmap, eval_json) >= 1.0 - _SCORE_EPS

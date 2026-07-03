@@ -2,9 +2,10 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterable
 from fnmatch import fnmatchcase
 
-# Glob-style denied paths; only source == "system" may write these.
+# Base glob-style denied paths (the floor); only source == "system" may write these.
 # Ids are dot-free, so `*` covers exactly one dotted segment (root.<id>.leaf).
 DENIED_PATHS = (
     "blockers.*.surfaced",
@@ -21,10 +22,13 @@ def _matches(pattern: str, path: str) -> bool:
     return all(fnmatchcase(seg, pat) for pat, seg in zip(pat_segs, path_segs, strict=True))
 
 
-def check_write_allowed(path: str, source: str) -> None:
-    """Raise PermissionError if a non-system `source` writes a denied path."""
+def check_write_allowed(path: str, source: str, extra: Iterable[str] = ()) -> None:
+    """Raise PermissionError if a non-system `source` writes a denied path.
+
+    Enforces the base floor UNION any per-instance `extra` denied globs.
+    """
     if source == "system":
         return
-    for pattern in DENIED_PATHS:
+    for pattern in (*DENIED_PATHS, *extra):
         if _matches(pattern, path):
             raise PermissionError(f"source {source!r} may not write denied path {path!r}")

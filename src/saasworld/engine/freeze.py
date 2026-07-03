@@ -34,8 +34,11 @@ def _content(root: Path) -> dict[str, Any]:
     }
 
 
-def _manifest(archetype: str, seed: int, factmap: FactMap, substrate_hash: str) -> dict[str, Any]:
-    return {
+def _manifest(
+    archetype: str, seed: int, factmap: FactMap, substrate_hash: str,
+    denied_paths: list[str] | None = None,
+) -> dict[str, Any]:
+    manifest: dict[str, Any] = {
         "id": f"{archetype}-{seed}",
         "archetype": archetype,
         "activate": factmap.activate,
@@ -47,11 +50,14 @@ def _manifest(archetype: str, seed: int, factmap: FactMap, substrate_hash: str) 
             "generator_version": GENERATOR_VERSION,
         },
     }
+    if denied_paths:  # only stamped when the template declares extra denied paths
+        manifest["denied_paths"] = list(denied_paths)
+    return manifest
 
 
 def write_candidate(
     out_dir: Path, archetype: str, seed: int, factmap: FactMap, eval_json: dict[str, Any],
-    substrate_hash: str,
+    substrate_hash: str, denied_paths: list[str] | None = None,
 ) -> None:
     """Emit the four content files + a candidate (unfrozen) manifest with provenance."""
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -59,7 +65,10 @@ def write_candidate(
     _write_json(out_dir / "personas.overlay.json", factmap.overlay)
     _write_json(out_dir / "timeline.json", factmap.timeline)
     _write_json(out_dir / "eval.json", eval_json)
-    _write_json(out_dir / "scenario.json", _manifest(archetype, seed, factmap, substrate_hash))
+    _write_json(
+        out_dir / "scenario.json",
+        _manifest(archetype, seed, factmap, substrate_hash, denied_paths),
+    )
 
 
 def freeze(instance_dir: str | Path) -> FreezeResult:

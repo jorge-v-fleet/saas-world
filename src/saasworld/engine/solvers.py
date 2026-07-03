@@ -21,6 +21,7 @@ from ..npc.engine import NPCEngine
 from ..scenario.loader import _DATA, _personas_by_org, _seed_world
 from ..state.store import WorldState
 from .assemble import FactMap
+from .render import substitute
 
 _CATALOG = load_catalog(_DATA / "actions.json")
 
@@ -60,45 +61,48 @@ def _attach_holder(kernel: Kernel, factmap: FactMap, parser: LLMParser) -> None:
     engine.attach(kernel)
 
 
+def _env(factmap: FactMap) -> dict[str, Any]:
+    """Substitution bindings for a solver script: the bound ids/slots plus derived solver tokens."""
+    env = {**factmap.ids, **factmap.bindings}
+    env["solver_new_date"] = _new_date(factmap)
+    env["correct_action"] = factmap.bindings["correct_set"][0]
+    env["chat_channel"] = f"chan.{factmap.ids['critical_project'].split('.', 1)[-1]}"
+    return env
+
+
+def _run_script(
+    factmap: FactMap, eval_json: dict[str, Any], steps: list[dict[str, Any]],
+    parser: LLMParser | None = None,
+) -> float:
+    """Run an ordered step script on a fresh Kernel and return its deterministic final score."""
+    kernel, traj = _driver(factmap)
+    env = _env(factmap)
+    for step in (substitute(raw, env) for raw in steps):
+        if "advance_until" in step:
+            kernel.advance_until(step["advance_until"])
+        elif step.get("kind") == "npc_reply":
+            if parser is not None:  # surface through the NPC engine (parser replays the cassette)
+                _attach_holder(kernel, factmap, parser)
+                kernel.schedule(step["at"], factmap.ids["blocker.holder"], "npc_reply", {
+                    "npc": step["npc"], "sender": factmap.agent,
+                    "body": step["body"], "args": step["args"]})
+            else:  # surface exactly as the holder's reveal would (system is the only graded writer)
+                kernel.schedule(step["at"], "system", "reveal", {"deltas": step["fallback_deltas"]})
+        elif "verb" in step:
+            deltas, _ = bind_effect(_CATALOG[step["verb"]], step.get("args", {}), now=0)
+            kernel.schedule(step["at"], step["actor"], step["verb"], {"deltas": deltas})
+        else:  # raw system-sourced deltas
+            kernel.schedule(step["at"], step["actor"], step["kind"], {"deltas": step["deltas"]})
+    return score(traj, eval_json).final
+
+
 def competent_pm(
     factmap: FactMap, eval_json: dict[str, Any], parser: LLMParser | None = None
 ) -> float:
     """Full-credit trajectory: surface -> reschedule -> record go/no-go -> inform stakeholder."""
-    kernel, traj = _driver(factmap)
-    ids, b = factmap.ids, factmap.bindings
-    blocker, project, stakeholder = b["blocker"], ids["critical_project"], ids["stakeholder"]
-    new_date = _new_date(factmap)
-
-    if parser is not None:  # surface through the NPC engine (parser replays from the cassette)
-        _attach_holder(kernel, factmap, parser)
-        kernel.schedule(50, ids["blocker.holder"], "npc_reply", {
-            "npc": ids["blocker.holder"], "sender": factmap.agent,
-            "body": "Is the PSP ready for Friday?", "args": {"refs": ["task.psp_integration"]}})
-    else:  # surface exactly as the holder's reveal would (system-sourced, the only graded writer)
-        kernel.schedule(50, "system", "reveal", {"deltas": [
-            {"op": "set", "path": f"blockers.{blocker}.surfaced", "value": True}]})
-
-    kernel.schedule(110, "system", "reschedule", {"deltas": [
-        {"op": "set", "path": f"projects.{project}.launch_date", "value": new_date}]})
-    decision, _ = bind_effect(_CATALOG["record_decision"], {
-        "about": project, "type": "gonogo", "action": b["correct_set"][0],
-        "new_date": new_date, "owner": ids["blocker.holder"]}, now=0)
-    kernel.schedule(120, "agent", "record_decision", {"deltas": decision})
-    kernel.schedule(130, "agent", "send_message", {"deltas": [
-        {"op": "append", "path": "messages", "value": {
-            "to": stakeholder, "body": f"{b['blocker_label']} blocks the launch.",
-            "refs": [blocker]}}]})
-
-    kernel.advance_until(200)
-    return score(traj, eval_json).final
+    return _run_script(factmap, eval_json, factmap.solvers["competent"], parser)
 
 
 def lazy(factmap: FactMap, eval_json: dict[str, Any]) -> float:
-    """Activity-only trajectory: chatter + a hand-set task status. Moves no graded field."""
-    kernel, traj = _driver(factmap)
-    channel = f"chan.{factmap.ids['critical_project'].split('.', 1)[-1]}"
-    for i in range(5):
-        kernel.schedule(100 + i, "agent", "send_message", {"deltas": [
-            {"op": "append", "path": "messages", "value": {"to": channel, "body": f"update {i}"}}]})
-    kernel.advance_until(200)
-    return score(traj, eval_json).final
+    """Activity-only trajectory: chatter to the project channel. Moves no graded field."""
+    return _run_script(factmap, eval_json, factmap.solvers["lazy"])

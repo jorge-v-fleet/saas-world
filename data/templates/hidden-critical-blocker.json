@@ -18,16 +18,35 @@
 
   "slots": {
     "blocker.type":        { "sample": ["pci_cert", "vendor_slip", "key_person_ooo", "loadtest_fail"] },
-    "blocker.holder":      { "sample_from": "active npcs where role in [backend, fullstack, sre]", "constraint": "holder != agent" },
-    "critical_project":    { "sample_from": "projects owned_by agent" },
+    "blocker.holder":      { "sample_from": "active npcs where role in [backend, fullstack, sre]", "constraint": "holder != agent", "as": "holder" },
+    "critical_project":    { "sample_from": "projects owned_by agent", "as": "critical_project" },
     "discovery.hops":      { "sample": [1, 2], "weights": [0.6, 0.4],
                              "on_2": "add a pointer-holder NPC (the agent's report) who names the holder but not the fact" },
     "reveal.gate":         { "sample": ["ask_direct", "needs_rapport", "needs_help_offer"] },
     "deadline.movable":    { "sample": [true, false] },
     "distractor_blockers": { "sample_int": [0, 2], "note": "red herrings that look critical but aren't" },
-    "stakeholder":         { "sample_from": "active npcs where role in [cto, pm]", "role": "applies deadline pressure" },
-    "stakeholder.pressure":{ "sample": ["low", "high"] }
+    "stakeholder":         { "sample_from": "active npcs where role in [cto, pm]", "constraint": "stakeholder != holder", "as": "stakeholder", "role": "applies deadline pressure" },
+    "stakeholder.pressure":{ "sample": ["low", "high"] },
+    "pointer":             { "sample_from": "active npcs where reports_to agent", "when": "discovery.hops == 2", "into": "pointer", "as": "pointer",
+                             "note": "2-hop discovery: the agent's report who names the holder but not the fact" }
   },
+
+  "bind_order": ["blocker.holder", "critical_project", "stakeholder", "pointer"],
+  "activate": ["$stakeholder", "$holder_mgr", "$pointer", "$holder"],
+
+  "derive": [
+    { "name": "movable",       "draw": "deadline.movable" },
+    { "name": "deadline_day",  "day_of": "$deadline_offset" },
+    { "name": "task_due",      "day_offset": { "base": "$deadline_day", "delta": -2, "time": "17:00" } },
+    { "name": "gonogo_due",    "day_offset": { "base": "$deadline_day", "delta": 0,  "time": "12:00" } },
+    { "name": "correct_set",   "select": { "cond": "$movable",
+        "if_true": ["reschedule", "hold_and_mitigate"], "if_false": ["hold_and_mitigate"] } },
+    { "name": "correct_why",   "select": { "cond": "$movable",
+        "if_true":  "acceptable-answer SET, not equality — set is derived from launch_date_movable=true (movable -> reschedule preferred, hold acceptable)",
+        "if_false": "acceptable-answer SET, not equality — set is derived from launch_date_movable=false (fixed -> hold and mitigate)" } },
+    { "name": "stakeholder_label", "role_label": "$stakeholder", "map": { "cto": "CTO", "pm": "PM" }, "default": "stakeholder" },
+    { "name": "blocker_label", "interp": "$label_template" }
+  ],
 
   "world": {
     "_note": "Blueprints for seed.json. $name = whole-value binding; ${name} interpolates inside a string.",
@@ -63,13 +82,13 @@
         { "id": "doc.launch_plan", "title": "Checkout launch plan", "claims_status": "on_track" }
       ],
       "transcripts": []
-    }
-  },
-
-  "distractor_blocker": {
-    "affects": "task.checkout_ui", "severity": "minor",
-    "summary": "A non-blocking nit that looks scary but isn't on the critical path.",
-    "known_to": ["$agent"], "surfaced": false
+    },
+    "blockers": [
+      { "repeat": { "count": "$distractor_blockers", "as": "n",
+        "node": { "id": "blocker.distractor_${n}", "affects": "task.checkout_ui", "severity": "minor",
+          "summary": "A non-blocking nit that looks scary but isn't on the critical path.",
+          "known_to": ["$agent"], "surfaced": false } } }
+    ]
   },
 
   "blockers": {
@@ -80,7 +99,7 @@
         "summary": "A ${blocker_type} blocker sits on the launch path and clears only after the deadline.",
         "cert_ready": "after(launch)", "known_to": ["$holder"], "surfaced": false },
       "overlays": {
-        "holder": {
+        "$holder_persona": {
           "goals": ["Ship the work without being blamed for a slip", "Avoid surfacing bad news unprompted"],
           "constraints": ["Reveals the ${blocker_type} problem only if asked directly about launch readiness"],
           "knowledge_scope": [
@@ -92,12 +111,13 @@
           ],
           "escalation_triggers": [ { "if": "asked_directly AND no_help_offered", "then": "reluctantly reveal" } ]
         },
-        "stakeholder": {
+        "$stakeholder_persona": {
           "goals": ["Hold the committed launch date"],
           "constraints": ["Does NOT know ${blocker} at seed"],
           "knowledge_scope": []
         },
-        "pointer": {
+        "$pointer_persona": {
+          "_when": "$has_pointer",
           "goals": ["Ship the dependent work"],
           "constraints": ["Blocked until the upstream task is ready"],
           "knowledge_scope": [
@@ -115,7 +135,7 @@
         "summary": "PSP live account isn't PCI-certified until after the launch; live payments would fail if shipped on time",
         "cert_ready": "after(launch)", "known_to": ["$holder"], "surfaced": false },
       "overlays": {
-        "holder": {
+        "$holder_persona": {
           "goals": [
             "Ship the PSP integration without being blamed for a slip",
             "Avoid surfacing bad news unprompted — fears being seen as *the* blocker"
@@ -135,7 +155,7 @@
             { "if": "asked_directly_about_psp AND no_help_offered", "then": "reluctantly reveal know.psp_cert" }
           ]
         },
-        "stakeholder": {
+        "$stakeholder_persona": {
           "goals": [
             "Hold the Friday launch date committed to the CEO",
             "Wants a confident bottom-line status"
@@ -146,7 +166,8 @@
           ],
           "knowledge_scope": []
         },
-        "pointer": {
+        "$pointer_persona": {
+          "_when": "$has_pointer",
           "goals": ["Ship the checkout UI", "Unblock own work"],
           "constraints": ["Cannot finish the UI until the payments endpoint is ready"],
           "knowledge_scope": [
@@ -164,11 +185,12 @@
     "scripted": [
       { "id": "ev.standup", "at": "D1T09:30", "type": "meeting_start", "event_ref": "evt.standup" },
       { "id": "ev.cto_checkin", "at": "D2T10:00", "type": "npc_message",
-        "from": "$stakeholder", "to": "$agent", "intent": "ask_status", "about": "$critical_project" }
-    ],
-    "pressure_event": { "id": "ev.cto_pressure", "at": "D4T09:00", "type": "npc_message",
-      "from": "$stakeholder", "to": "$agent", "intent": "apply_pressure",
-      "note": "CEO is asking if Friday holds — I need a straight answer today." }
+        "from": "$stakeholder", "to": "$agent", "intent": "ask_status", "about": "$critical_project" },
+      { "_when": "$stakeholder_pressure == high",
+        "id": "ev.cto_pressure", "at": "D4T09:00", "type": "npc_message",
+        "from": "$stakeholder", "to": "$agent", "intent": "apply_pressure",
+        "note": "CEO is asking if Friday holds — I need a straight answer today." }
+    ]
   },
 
   "eval_checkpoint": { "id": "chk.final", "at": "$deadline_offset" },
@@ -206,6 +228,48 @@
     { "id": "no_activity_reward", "why": "message counts / task edits touch no graded field; only the predicates above score. Setting task.status by hand does not clear blocked_by or flip surfaced." }
   ],
   "_weights_sum": 1.0,
+
+  "coherence": [
+    { "count": "blockers[?severity=='launch_blocking']", "eq": 1,
+      "reason": "expected exactly one critical blocker on the launch path" },
+    { "count_field": { "path": "blockers[?severity=='launch_blocking']", "field": "known_to" }, "eq": 1,
+      "reason": "the critical blocker must be known_to exactly one NPC at seed" },
+    { "holder_tier_active": { "path": "blockers[?severity=='launch_blocking']", "field": "known_to" },
+      "reason": "the critical blocker's holder is not an active-tier NPC" },
+    { "field_eq": { "path": "blockers[?severity=='launch_blocking']", "field": "surfaced" }, "eq": false,
+      "reason": "the critical blocker must start surfaced=false" },
+    { "reveal_path_exists": { "blocker_path": "blockers[?severity=='launch_blocking']" },
+      "reason": "no NPC reveal path can flip the critical blocker's surfaced flag" },
+    { "denied_path": "blockers.*.surfaced",
+      "reason": "blockers.*.surfaced has no agent write path" },
+    { "weights_sum": 1.0,
+      "reason": "eval predicate weights must sum to 1.0" }
+  ],
+
+  "solvers": {
+    "_note": "Reference trajectories the validity gate runs; competent must reach full score, lazy ~0. $name / ${name} bind against the instance's slots plus solver tokens (solver_new_date, correct_action, chat_channel).",
+    "competent": [
+      { "at": 50, "kind": "npc_reply", "npc": "$holder",
+        "body": "Is the PSP ready for Friday?", "args": { "refs": ["task.psp_integration"] },
+        "fallback_deltas": [ { "op": "set", "path": "blockers.${blocker}.surfaced", "value": true } ] },
+      { "at": 110, "actor": "system", "kind": "reschedule",
+        "deltas": [ { "op": "set", "path": "projects.${critical_project}.launch_date", "value": "$solver_new_date" } ] },
+      { "at": 120, "actor": "agent", "verb": "record_decision",
+        "args": { "about": "$critical_project", "type": "gonogo", "action": "$correct_action",
+                  "new_date": "$solver_new_date", "owner": "$holder" } },
+      { "at": 130, "actor": "agent", "verb": "send_message",
+        "args": { "to": "$stakeholder", "body": "${blocker_label} blocks the launch.", "refs": ["$blocker"] } },
+      { "advance_until": 200 }
+    ],
+    "lazy": [
+      { "at": 100, "actor": "agent", "verb": "send_message", "args": { "to": "$chat_channel", "body": "update 0" } },
+      { "at": 101, "actor": "agent", "verb": "send_message", "args": { "to": "$chat_channel", "body": "update 1" } },
+      { "at": 102, "actor": "agent", "verb": "send_message", "args": { "to": "$chat_channel", "body": "update 2" } },
+      { "at": 103, "actor": "agent", "verb": "send_message", "args": { "to": "$chat_channel", "body": "update 3" } },
+      { "at": 104, "actor": "agent", "verb": "send_message", "args": { "to": "$chat_channel", "body": "update 4" } },
+      { "advance_until": 200 }
+    ]
+  },
 
   "example_binding": {
     "_note": "A concrete slot draw, for illustration. `_seed` reproduces it through sample+bind under the committed substrate.",

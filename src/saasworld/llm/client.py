@@ -28,8 +28,10 @@ def _cassette_path(path: str | Path | None) -> Path:
 class LLMClient:
     """Injected behind `LLMClientProto`. `mode` defaults to offline replay."""
 
-    def __init__(self, *, mode: str = "replay", cassette: str | Path | None = None) -> None:
-        self.mode = mode
+    def __init__(self, *, mode: str | None = None, cassette: str | Path | None = None) -> None:
+        # Default offline replay; `SAASWORLD_LLM_MODE=record` opts a live run into calling the API
+        # (needed when a real agent sends novel NPC messages the cassette can't classify).
+        self.mode = mode or os.environ.get("SAASWORLD_LLM_MODE", "replay")
         self.cassette = _cassette_path(cassette)
         self._recorded = read_cassette(self.cassette)
 

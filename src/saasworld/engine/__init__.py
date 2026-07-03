@@ -26,13 +26,20 @@ def generate(archetype: str, seed: int, out_dir: str | Path | None = None) -> Ge
     template = load_template(archetype)
     factmap, eval_json = run_pipeline(template, seed, substrate)
     out = Path(out_dir) if out_dir is not None else _DEFAULT_OUT / f"{archetype}-{seed}"
-    _freeze.write_candidate(out, archetype, seed, factmap, eval_json, substrate.hash)
+    _freeze.write_candidate(
+        out, archetype, seed, factmap, eval_json, substrate.hash, template.get("denied_paths"),
+    )
+    # Archetype-agnostic summary: bound ids plus any well-known bindings the template happens to
+    # carry (absent keys are simply omitted, so a new archetype never KeyErrors here).
+    b = factmap.bindings
     summary = {
-        "blocker": factmap.bindings["blocker"],
-        "holder": factmap.ids["blocker.holder"],
-        "critical_project": factmap.ids["critical_project"],
-        "stakeholder": factmap.ids["stakeholder"],
-        "movable": factmap.bindings["movable"],
+        k: v for k, v in {
+            "blocker": b.get("blocker"),
+            "holder": factmap.ids.get("blocker.holder") or factmap.ids.get("holder"),
+            "critical_project": factmap.ids.get("critical_project"),
+            "stakeholder": factmap.ids.get("stakeholder"),
+            "movable": b.get("movable"),
+        }.items() if v is not None
     }
     return GenerateResult(out, archetype, seed, factmap.activate, summary)
 

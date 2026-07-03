@@ -81,19 +81,68 @@ def _validate_args(entry: dict[str, Any], args: Any) -> str | None:
     return None
 
 
+def _exists(state: Any, partition: str, eid: Any) -> bool:
+    """True if `eid` is present in `partition`, under either id-keying scheme that ships:
+    flat full-id keys (the `load_bootstrap` world: `projects['proj.checkout']`, `tasks['t1']`) or
+    dotted ids nested by segment (the scenario loader: `projects['proj']['checkout']`). Checking
+    both is what keeps the guard correct across both — the flat-only check silently rejected every
+    real scenario id, since a nested partition has only the first segment as a top-level key."""
+    if eid is None:
+        return False
+    part = state.read(partition)
+    if isinstance(part, dict) and eid in part:  # flat key
+        return True
+    return state.read(f"{partition}.{eid}") is not None  # dotted id walked into nested dicts
+
+
+def _find_meeting(state: Any, mid: Any) -> dict[str, Any] | None:
+    for ev in state.read("calendar") or []:
+        if isinstance(ev, dict) and ev.get("id") == mid:
+            return ev
+    return None
+
+
+def _to_minutes(at: Any) -> int | None:
+    """Calendar times are either sim-minutes or a `D<day>T<HH:MM>` offset; None if unparseable."""
+    if isinstance(at, int):
+        return at
+    if isinstance(at, str):
+        from saasworld.scenario.loader import ScenarioError, offset_to_minutes
+        try:
+            return offset_to_minutes(at)
+        except ScenarioError:
+            return None
+    return None
+
+
+def _meeting_end(state: Any, mid: Any, now: int) -> int:
+    """End of the meeting window (start + duration, default 30m). Never rewinds the clock; a
+    meeting that already passed advances to `now` (a no-op release). Existence is preconditioned."""
+    meeting = _find_meeting(state, mid) or {}
+    start = _to_minutes(meeting.get("at") or meeting.get("start"))
+    end = start + int(meeting.get("duration", 30)) if start is not None else now
+    return max(now, end)
+
+
 def _precondition(verb: str, args: dict[str, Any], state: Any) -> str | None:
     """Real referential guards -> 1001 when the target doesn't exist / isn't reachable."""
     if verb == "create_task":
-        if args.get("project") not in (state.read("projects") or {}):
+        if not _exists(state, "projects", args.get("project")):
             return f"unknown project {args.get('project')!r}"
     elif verb == "update_task":
-        if args.get("task") not in (state.read("tasks") or {}):
+        if not _exists(state, "tasks", args.get("task")):
             return f"unknown task {args.get('task')!r}"
     elif verb == "send_message":
         to = args.get("to")
         chat = state.read("chat") or {}
         if to in chat and AGENT not in chat[to].get("members", []):
             return f"agent is not a member of channel {to!r}"
+    elif verb == "attend_meeting":
+        meeting = _find_meeting(state, args.get("meeting"))
+        if meeting is None:
+            return f"unknown meeting {args.get('meeting')!r}"
+        if AGENT not in (meeting.get("attendees") or []):
+            return f"agent is not an attendee of {args.get('meeting')!r}"
     return None
 
 
@@ -135,8 +184,13 @@ def _action(
         return _err(ERR_PRECONDITION, pre)
 
     if cls == "advance":
-        duration = args["duration"]
-        applied = kernel.advance_until(kernel.now() + duration)
+        # `wait` carries a duration; `attend_meeting` releases the clock to the meeting's end
+        # (it has no `duration` arg, so a blind args["duration"] used to crash).
+        if verb == "attend_meeting":
+            target = _meeting_end(state, args.get("meeting"), kernel.now())
+        else:
+            target = kernel.now() + args["duration"]
+        applied = kernel.advance_until(target)
         return _observation(kernel.now(), {"verb": verb}, [event_view(e) for e in applied])
 
     # mutate — zero-duration

@@ -7,6 +7,7 @@ validated to sum to exactly 1.0; the `correct_action` set is derived from the de
 
 from __future__ import annotations
 
+import json
 from typing import Any
 
 from .assemble import FactMap
@@ -19,10 +20,16 @@ class WeightsError(ValueError):
     """Emitted eval weights do not sum to 1.0."""
 
 
-def _referenced_ids(factmap: FactMap) -> set[str]:
-    ids = factmap.ids
-    return {ids["blocker.holder"], ids["critical_project"], ids["stakeholder"],
-            factmap.bindings["blocker"]}
+def _referenced_ids(factmap: FactMap, projected: Any) -> set[str]:
+    """Entity ids the projected eval actually mentions.
+
+    Scans the bound predicates for any dotted id-value drawn from the factmap, so an archetype
+    whose eval references different ids still has each one existence-checked against the world.
+    """
+    text = json.dumps(projected)
+    pool = set(factmap.ids.values())
+    pool |= {v for v in factmap.bindings.values() if isinstance(v, str) and "." in v}
+    return {i for i in pool if i in text}
 
 
 def project_eval(factmap: FactMap, template: dict[str, Any]) -> dict[str, Any]:
@@ -36,13 +43,13 @@ def project_eval(factmap: FactMap, template: dict[str, Any]) -> dict[str, Any]:
         raise WeightsError(f"eval weights sum to {total}, expected 1.0")
 
     meta = substitute(template["eval_checkpoint"], factmap.bindings)
-    world_ids = factmap.world_ids()
-    missing = _referenced_ids(factmap) - world_ids
-    if missing:
-        raise ValueError(f"eval references absent IDs {sorted(missing)}")
-
-    return {
+    result = {
         "checkpoints": [{"id": meta["id"], "at": meta["at"], "predicates": checkpoint}],
         "artifact_predicates": artifacts,
         "guards": substitute(template.get("eval_guards", []), factmap.bindings),
     }
+
+    missing = _referenced_ids(factmap, result) - factmap.world_ids()
+    if missing:
+        raise ValueError(f"eval references absent IDs {sorted(missing)}")
+    return result

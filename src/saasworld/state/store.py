@@ -14,8 +14,16 @@ _SCOPE_PARTITIONS = {"people": "org", "projects": "projects", "channels": "chat"
 
 
 class WorldState:
-    def __init__(self, initial: dict[str, Any] | None = None) -> None:
+    def __init__(
+        self, initial: dict[str, Any] | None = None, denied_paths: list[str] | None = None
+    ) -> None:
         self._data: dict[str, Any] = initial if initial is not None else {}
+        # Per-instance denied globs layered on top of the guard's base floor.
+        self._denied_paths: tuple[str, ...] = tuple(denied_paths or ())
+
+    def set_denied_paths(self, paths: list[str] | None) -> None:
+        """Set the per-instance denied globs enforced on top of the base floor."""
+        self._denied_paths = tuple(paths or ())
 
     def read(self, path: str) -> Any:
         """Dotted-path read (e.g. 'tasks.T1.status'); return None if absent."""
@@ -41,7 +49,7 @@ class WorldState:
         """Apply delta-DSL ops in order. Enforce the constrained-write guard per op."""
         for delta in deltas:
             validate_path(delta["path"])
-            check_write_allowed(delta["path"], source)
+            check_write_allowed(delta["path"], source, self._denied_paths)
             apply_delta(self._data, delta)
 
     def snapshot(self) -> dict[str, Any]:

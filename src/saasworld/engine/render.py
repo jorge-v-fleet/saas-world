@@ -26,3 +26,25 @@ def substitute(node: Any, bindings: dict[str, Any]) -> Any:
     if isinstance(node, list):
         return [substitute(v, bindings) for v in node]
     return node
+
+
+def _literal(token: str) -> Any:
+    if token.lstrip("-").isdigit():
+        return int(token)
+    if token in ("true", "false"):
+        return token == "true"
+    return token.strip("'\"")
+
+
+def cond(expr: str, scope: dict[str, Any]) -> bool:
+    """Evaluate a tiny `<ref> (==|!=) <literal>` / bare-truthy condition against `scope`.
+
+    A `$name` or bare `name` ref reads `scope`; the RHS is an int/bool/string literal. No operator
+    means: is the referenced value truthy.
+    """
+    for op in ("==", "!="):
+        if op in expr:
+            lhs, rhs = (s.strip() for s in expr.split(op, 1))
+            equal = scope.get(lhs.lstrip("$")) == _literal(rhs)
+            return equal if op == "==" else not equal
+    return bool(scope.get(expr.lstrip("$")))

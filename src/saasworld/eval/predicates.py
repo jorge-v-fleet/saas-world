@@ -10,12 +10,15 @@ from __future__ import annotations
 import re
 from typing import Any
 
-from .paths import MISSING, read
+from .paths import MISSING, _literal, read
 
 Result = tuple[float, str]
 
-# Scenario-anchored grounding paths for decision_comms (mirror eval.json requires_state prose).
-_BLOCKER_SURFACED = "blockers.blocker.psp_cert.surfaced"
+
+def _grounding(requires_state: str) -> tuple[str, Any]:
+    """Parse a `<path> == <literal>` grounding out of a predicate's requires_state clause."""
+    path, _, rhs = requires_state.partition("==")
+    return path.strip(), _literal(rhs)
 
 
 def field_eq(spec: dict[str, Any], *, state: Any, baseline: Any = None) -> Result:
@@ -78,6 +81,11 @@ def eval_assert(spec: dict[str, Any], *, state: Any, baseline: Any = None) -> Re
     return 0.0, f"unknown assert {sorted(spec)}"
 
 
+def holds(spec: dict[str, Any], *, state: Any, baseline: Any = None) -> bool:
+    """True iff a single eval assert is fully satisfied against `state` (gates system effects)."""
+    return eval_assert(spec, state=state, baseline=baseline)[0] >= 1.0
+
+
 def _about(source: str) -> str | None:
     m = re.search(r"about='([^']+)'", source)
     return m.group(1) if m else None
@@ -98,7 +106,13 @@ def decision_comms(pred: dict[str, Any], *, state: Any, baseline: Any) -> tuple[
     credit = 0.0
     parts: list[str] = []
 
-    surfaced = read(state, _BLOCKER_SURFACED) is True
+    # Ground cites_blocker on the path the predicate declares; absent clause = no state gate.
+    requires = sub["cites_blocker"].get("requires_state")
+    if requires is not None:
+        g_path, g_want = _grounding(requires)
+        surfaced = read(state, g_path) == g_want
+    else:
+        surfaced = True
     if surfaced:
         credit += sub["cites_blocker"]["w"]
     parts.append(f"cites_blocker={'ok' if surfaced else '0'}")
