@@ -167,8 +167,11 @@ agent free-text ─▶ LLM parser ─▶ deterministic ──┬─▶ world eff
 
 ## Rollout trajectory examples
 
-> _Placeholder — to be populated once the current experiment runs complete._
+Every run is fully inspectable — score breakdown, event timeline, and the cohort distribution.
 
-- Competent vs lazy run on `delivery-slip`, side by side (score decomposition).
-- Inspector screenshots: actor swimlanes, `caused_by` causal chain, POV toggle, reward-hack panel.
-- Cohort view: score distribution + activity-vs-outcome across seeds.
+```shots
+score-inspector.png   → score
+traj-timeline.png     → trajectory timeline
+rollout-distro.png    → distribution
+inspector: http://127.0.0.1:8092/inspector
+```

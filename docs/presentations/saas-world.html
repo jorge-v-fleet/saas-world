@@ -67,6 +67,14 @@
     font-style:italic; color:var(--mut); font-size:0.42em; letter-spacing:0.02em; }
   .diag .loads{ text-align:center; color:var(--mut); font-style:italic; font-size:0.44em; margin:2px 0; }
   .diag .loads .down{ display:block; font-style:normal; font-size:1.5em; color:#a0a0a0; line-height:1; }
+  /* ---------- rollout screenshots ---------- */
+  .shots{ display:flex; gap:16px; justify-content:center; align-items:flex-start; margin:0.6em 0 0.2em; }
+  .shots figure{ margin:0; flex:1 1 0; min-width:0; text-align:center; }
+  .shots img{ width:100%; height:auto; max-height:340px; object-fit:contain; background:#fff;
+    border:1px solid var(--line); border-radius:6px; }
+  .shots figcaption{ margin-top:7px; font-style:italic; color:var(--mut); font-size:0.46em; letter-spacing:0.02em; }
+  .reveal .inspector-link{ text-align:center; color:var(--mut); font-size:0.62em; margin-top:0.5em; }
+  .reveal .inspector-link a{ color:var(--ink); }
 </style>
 </head>
 <body>
@@ -212,11 +220,9 @@ wait            { duration }                            advance → release cloc
 
 ## Rollout trajectory examples
 
-> _Placeholder — to be populated once the current experiment runs complete._
+Every run is fully inspectable — score breakdown, event timeline, and the cohort distribution.
 
-- Competent vs lazy run on `delivery-slip`, side by side (score decomposition).
-- Inspector screenshots: actor swimlanes, `caused_by` causal chain, POV toggle, reward-hack panel.
-- Cohort view: score distribution + activity-vs-outcome across seeds.
+<div class="shots"><figure><img src="score-inspector.png" alt="score breakdown"><figcaption>score</figcaption></figure><figure><img src="traj-timeline.png" alt="trajectory timeline"><figcaption>trajectory timeline</figcaption></figure><figure><img src="rollout-distro.png" alt="rollout distribution"><figcaption>distribution</figcaption></figure></div><p class="inspector-link">explore any run live &rarr; <a href="http://127.0.0.1:8092/inspector">127.0.0.1:8092/inspector</a></p>
     </textarea>
   </section>
 </div></div>
