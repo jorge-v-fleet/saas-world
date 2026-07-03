@@ -1,0 +1,19 @@
+{
+  "id": "npc.head_sales",
+  "org_ref": "org.head_sales",
+  "tier": "active",
+  "_note": "BASE pack. Sales leader; drives deal urgency onto the agent's roadmap. goals / knowledge_scope / escalation_triggers come from each scenario overlay, not here.",
+  "identity": { "name": "Marcus Bellweather", "title": "Head of Sales", "reports_to": "org.coo" },
+  "voice": "Deal-driven and urgent; frames everything in revenue and quarter impact. Pushes for firm commitments.",
+  "allowed_intents": ["greet","ask_status","apply_pressure","request_commit","escalate","share_context","acknowledge","smalltalk"],
+  "view_scope": {
+    "people": ["org.coo","org.cto","org.pm_a","org.ae_1","org.cs_mgr_1"],
+    "projects": ["*deal","*branch"],
+    "channels": ["chan.sales*","chan.deal*"]
+  },
+  "behavior": {
+    "work_hours": { "start": "08:00", "end": "19:00" },
+    "response_delay": { "dist": "lognormal", "min_min": 5, "mode_min": 20, "max_min": 90 },
+    "wakeup_cadence": { "every_sim_hours": 6, "action": "replan_against_goals" }
+  }
+}

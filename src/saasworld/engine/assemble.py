@@ -30,6 +30,7 @@ class FactMap:
     # Archetype rules carried in-memory only (never serialized into the frozen instance).
     coherence: list[Any] = field(default_factory=list)
     solvers: dict[str, Any] = field(default_factory=dict)
+    autonomous_npcs: bool = False  # template-declared; propagates into the frozen manifest
 
     def world_ids(self) -> set[str]:
         ids = {self.agent, *self.activate}
@@ -149,4 +150,5 @@ def assemble(
         activate=binding.activate, seed=seed, overlay=_overlays(content, env),
         timeline={"scripted": _expand(template["timeline"]["scripted"], env)},
         coherence=template.get("coherence", []), solvers=template.get("solvers", {}),
+        autonomous_npcs=bool(template.get("autonomous_npcs", False)),
     )

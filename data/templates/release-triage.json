@@ -198,7 +198,7 @@
 
   "example_binding": {
     "_note": "A concrete draw for illustration. `_seed` reproduces it through sample+bind under the committed substrate.",
-    "_seed": 1,
+    "_seed": 69,
     "blocker.type": "auth_regression", "critical_project": "billing_v2",
     "holder": "org.fs_b1", "stakeholder": "org.pm_b", "deadline.offset": "D10T17:00"
   }

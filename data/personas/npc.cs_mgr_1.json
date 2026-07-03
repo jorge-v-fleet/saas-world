@@ -1,0 +1,19 @@
+{
+  "id": "npc.cs_mgr_1",
+  "org_ref": "org.cs_mgr_1",
+  "tier": "active",
+  "_note": "BASE pack. Customer Support Manager; advocates for account health and flags churn risk. goals / knowledge_scope come from each scenario overlay.",
+  "identity": { "name": "Tara Nguyen", "title": "Customer Support Manager", "reports_to": "org.coo" },
+  "voice": "Customer-advocacy first; frames asks around retention, account health, and churn risk. Calm but firm on commitments made to customers.",
+  "allowed_intents": ["greet","ask_status","report_blocker","escalate","share_context","request_help","acknowledge","smalltalk"],
+  "view_scope": {
+    "people": ["org.coo","org.cto","org.pm_a","org.cs_1","org.head_sales"],
+    "projects": ["*account","*branch"],
+    "channels": ["chan.support*","chan.cs*"]
+  },
+  "behavior": {
+    "work_hours": { "start": "09:00", "end": "18:00" },
+    "response_delay": { "dist": "lognormal", "min_min": 10, "mode_min": 40, "max_min": 150 },
+    "wakeup_cadence": { "every_sim_hours": 8, "action": "replan_against_goals" }
+  }
+}

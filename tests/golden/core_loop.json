@@ -36,7 +36,7 @@
     ],
     "org": {
       "org.ae_1": {
-        "name": null,
+        "name": "Jenna Cole",
         "title": "Account Executive"
       },
       "org.ae_2": {
@@ -68,7 +68,7 @@
         "title": "COO"
       },
       "org.cs_1": {
-        "name": null,
+        "name": "Omar Haddad",
         "title": "CS Support"
       },
       "org.cs_2": {
@@ -76,7 +76,7 @@
         "title": "CS Support"
       },
       "org.cs_mgr_1": {
-        "name": null,
+        "name": "Tara Nguyen",
         "title": "Customer Support Manager"
       },
       "org.cto": {
@@ -96,7 +96,7 @@
         "title": "Fullstack Engineer"
       },
       "org.head_sales": {
-        "name": null,
+        "name": "Marcus Bellweather",
         "title": "Head of Sales"
       },
       "org.pm_a": {

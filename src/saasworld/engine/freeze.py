@@ -52,6 +52,8 @@ def _manifest(
     }
     if denied_paths:  # only stamped when the template declares extra denied paths
         manifest["denied_paths"] = list(denied_paths)
+    if factmap.autonomous_npcs:  # only stamped when the template opts into wake-ups (default off)
+        manifest["autonomous_npcs"] = True
     return manifest
 
 

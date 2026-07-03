@@ -84,6 +84,11 @@
       }
     ],
     "org": {
+      "org.ae_1": {
+        "name": "Jenna Cole",
+        "reports_to": "org.head_sales",
+        "title": "Account Executive"
+      },
       "org.be_b2": {
         "name": "Priya Nair",
         "reports_to": "org.pm_b",
@@ -93,6 +98,16 @@
         "name": "Diego Santos",
         "reports_to": "org.pm_b",
         "title": "Backend Engineer"
+      },
+      "org.cs_1": {
+        "name": "Omar Haddad",
+        "reports_to": "org.cs_mgr_1",
+        "title": "CS Support"
+      },
+      "org.cs_mgr_1": {
+        "name": "Tara Nguyen",
+        "reports_to": "org.coo",
+        "title": "Customer Support Manager"
       },
       "org.cto": {
         "name": "Rohit Malhotra",
@@ -113,6 +128,11 @@
         "name": "Leo Kim",
         "reports_to": "org.pm_b",
         "title": "Fullstack Engineer"
+      },
+      "org.head_sales": {
+        "name": "Marcus Bellweather",
+        "reports_to": "org.coo",
+        "title": "Head of Sales"
       },
       "org.pm_a": {
         "name": "Alex Rivera",

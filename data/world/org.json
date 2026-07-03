@@ -24,8 +24,8 @@
 
     { "id": "org.coo",     "title": "COO",                     "name": null,            "reports_to": "org.ceo",      "tier": "reference" },
     { "id": "org.bizops",  "title": "BizOps",                  "name": null,            "reports_to": "org.coo",      "tier": "reference" },
-    { "id": "org.head_sales","title": "Head of Sales",         "name": null,            "reports_to": "org.coo",      "tier": "reference" },
-    { "id": "org.ae_1",    "title": "Account Executive",       "name": null,            "reports_to": "org.head_sales","tier": "reference" },
+    { "id": "org.head_sales","title": "Head of Sales",         "name": "Marcus Bellweather","reports_to": "org.coo",   "tier": "active" },
+    { "id": "org.ae_1",    "title": "Account Executive",       "name": "Jenna Cole",    "reports_to": "org.head_sales","tier": "active" },
     { "id": "org.ae_2",    "title": "Account Executive",       "name": null,            "reports_to": "org.head_sales","tier": "reference" },
     { "id": "org.sdr_mgr", "title": "SDR Manager",             "name": null,            "reports_to": "org.head_sales","tier": "reference" },
     { "id": "org.sdr_1",   "title": "SDR",                     "name": null,            "reports_to": "org.sdr_mgr",  "tier": "reference" },
@@ -33,8 +33,8 @@
     { "id": "org.sdr_3",   "title": "SDR",                     "name": null,            "reports_to": "org.sdr_mgr",  "tier": "reference" },
     { "id": "org.sdr_4",   "title": "SDR",                     "name": null,            "reports_to": "org.sdr_mgr",  "tier": "reference" },
     { "id": "org.sdr_5",   "title": "SDR",                     "name": null,            "reports_to": "org.sdr_mgr",  "tier": "reference" },
-    { "id": "org.cs_mgr_1","title": "Customer Support Manager","name": null,            "reports_to": "org.coo",      "tier": "reference" },
-    { "id": "org.cs_1",    "title": "CS Support",              "name": null,            "reports_to": "org.cs_mgr_1", "tier": "reference" },
+    { "id": "org.cs_mgr_1","title": "Customer Support Manager","name": "Tara Nguyen",   "reports_to": "org.coo",      "tier": "active" },
+    { "id": "org.cs_1",    "title": "CS Support",              "name": "Omar Haddad",   "reports_to": "org.cs_mgr_1", "tier": "active" },
     { "id": "org.cs_2",    "title": "CS Support",              "name": null,            "reports_to": "org.cs_mgr_1", "tier": "reference" }
   ]
 }

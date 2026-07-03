@@ -1,0 +1,19 @@
+{
+  "id": "npc.cs_1",
+  "org_ref": "org.cs_1",
+  "tier": "active",
+  "_note": "BASE pack. CS Support rep in direct contact with the account; surfaces on-the-ground customer pain and risk signals. goals / knowledge_scope come from each scenario overlay.",
+  "identity": { "name": "Omar Haddad", "title": "CS Support", "reports_to": "org.cs_mgr_1" },
+  "voice": "Empathetic and detail-oriented; relays specific customer complaints and frames them as retention risk.",
+  "allowed_intents": ["greet","ask_status","report_blocker","share_context","request_help","escalate","acknowledge","smalltalk"],
+  "view_scope": {
+    "people": ["org.cs_mgr_1","org.pm_a","org.ae_1"],
+    "projects": ["*account"],
+    "channels": ["chan.support*","chan.cs*"]
+  },
+  "behavior": {
+    "work_hours": { "start": "09:00", "end": "18:00" },
+    "response_delay": { "dist": "lognormal", "min_min": 10, "mode_min": 45, "max_min": 160 },
+    "wakeup_cadence": { "every_sim_hours": 8, "action": "replan_against_goals" }
+  }
+}
