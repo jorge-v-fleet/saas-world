@@ -59,6 +59,12 @@ _ALL_ACTIONS = ("commit", "decline", "counter_offer")
 _PREDICATES = ("feasibility_surfaced", "commit_recorded", "correct_commit",
                "informed_sales", "informed_cs", "stakeholder_informed")
 
+# Simulated work rhythm the dense envelope advances through (calendar-day minutes).
+_DAY = 24 * 60
+_WORK_START = 9 * 60
+_WORK_END = 18 * 60
+_MAX_TICKS = 400  # loop safety net; a normal 3-week run takes ~50 ticks
+
 
 # --------------------------------------------------------------------------------------------------
 # Per-instance id resolution (read the frozen instance the evaluator will actually grade against)
@@ -108,12 +114,21 @@ class Dist:
     q_exp: float  # q(c) = c ** q_exp — governs P(correct action | decision recorded)
 
 
+@dataclass
+class Density:
+    """Tunes how DENSE the 3-week envelope is: bigger `tick_min` -> fewer, longer waits (fewer
+    actions); higher `activity_prob` -> more non-scoring PM chatter per work-hours tick."""
+
+    tick_min: int         # base work-hours advance; each wait draws in [tick_min//2, tick_min*2]
+    activity_prob: float  # P(a work-hours tick also emits one realistic non-scoring action)
+
+
 class CompetencePolicy:
     """Draws a competence `c`, then fires each backbone step independently with probability `c`.
 
-    Not a navigator (unlike RandomPolicy): the backbone is a fixed 5-step script, gated by `c`, with
-    a couple of no-op observes interleaved for realism. Determinism comes from a single per-episode
-    rng seeded off the master seed."""
+    Not a navigator (unlike RandomPolicy): the backbone is a fixed 5-step script, gated by `c`. The
+    scheduler (`_build_schedule`) places those steps at realistic sim-times and embeds them in a
+    dense envelope of non-scoring activity. Determinism comes from one per-episode rng."""
 
     def __init__(self, rng: random.Random, dist: Dist) -> None:
         self.rng = rng
@@ -129,6 +144,113 @@ class CompetencePolicy:
             return refs.correct_set[0]
         wrong = [a for a in _ALL_ACTIONS if a not in refs.correct_set]
         return self.rng.choice(wrong)
+
+
+# --------------------------------------------------------------------------------------------------
+# Realistic (non-scoring) PM envelope — the dense activity the scoring backbone is embedded in
+# --------------------------------------------------------------------------------------------------
+
+@dataclass
+class Surfaces:
+    """Stable ids the envelope reads/writes; resolved once from the opening snapshot."""
+
+    channel: str | None
+    doc: str | None
+    standup: str | None
+
+
+def _surfaces(state: dict[str, Any]) -> Surfaces:
+    chat = state.get("chat") or {}
+    docs = state.get("docs") or []
+    cal = state.get("calendar") or []
+    return Surfaces(
+        channel="chan.deal" if "chan.deal" in chat else next(iter(chat), None),
+        doc=next((d["id"] for d in docs if isinstance(d, dict) and d.get("id")), None),
+        standup=next((c["id"] for c in cal if isinstance(c, dict) and c.get("id")), None),
+    )
+
+
+def _off(day: int, hh: int, mm: int = 0) -> int:
+    """`D<day>T<hh:mm>` in sim-minutes (D1 = day 0), mirroring loader.offset_to_minutes."""
+    return (day - 1) * _DAY + hh * 60 + mm
+
+
+def _activity(do: Any, rng: random.Random, surf: Surfaces) -> None:
+    """Emit ONE realistic non-scoring PM action — reads dominate, with light status writes that
+    touch no graded field (docs / the shared channel, never a graded recipient+ref)."""
+    r = rng.random()
+    if r < 0.30:
+        do("read_inbox", {})
+    elif r < 0.50 and surf.channel:
+        do("read_channel", {"channel": surf.channel})
+    elif r < 0.63:
+        do("get_tasks", {"project": DEAL})
+    elif r < 0.73:
+        do("get_calendar", {})
+    elif r < 0.81:
+        do("get_people", {})
+    elif r < 0.90 and surf.doc:
+        do("read_doc", {"doc": surf.doc})
+    elif r < 0.95 and surf.doc:
+        do("update_doc", {"doc": surf.doc,
+                          "body": "Status: coordinating the deal commit; awaiting Eng read."})
+    elif surf.channel:
+        do("send_message", {"to": surf.channel, "body": "Quick status: still working the commit."})
+    else:
+        do("read_inbox", {})
+
+
+def _build_schedule(
+    do: Any, rng: random.Random, refs: Refs, policy: CompetencePolicy, env: Any, surf: Surfaces,
+) -> list[tuple[int, Any]]:
+    """Backbone (competence-gated) + a couple of ungated realism milestones, each stamped with a
+    plausible sim-time DURING the horizon. Returned sorted; the loop fires them as the clock passes.
+
+    Gating is UNCHANGED from the old flat script: each backbone step fires w.p. `c` and the commit
+    action is correct w.p. `q(c)` — only *when* they fire moved from t=0 to realistic points."""
+    steps: list[tuple[int, Any]] = []
+
+    def at(day: int, hlo: int, hhi: int) -> int:
+        return _off(day, rng.randint(hlo, hhi), rng.choice((0, 15, 30, 45)))
+
+    # Ungated realism: book a mid-horizon deal-review meeting.
+    steps.append((at(5, 11, 14), lambda: do("book_meeting", {
+        "title": "Deal review", "attendees": [refs.ae, refs.holder, refs.stakeholder],
+        "at": "D6T11:00", "duration": 30})))
+
+    # 1) Ask Eng shortly after the AE push (D2T09:00) -> the system reveal surfacing feasibility.
+    if policy._fire():
+        def ask() -> None:
+            do("send_message", {"to": refs.holder, "refs": [DEAL],
+                                "body": "Can Eng land the deal by the promised date?"})
+            env._kernel.schedule(  # model the reveal deterministically, like solvers' fallback
+                env._kernel.now() + 50, "system", "reveal",
+                {"deltas": [{"op": "set",
+                             "path": "projects.deal.feasibility_surfaced", "value": True}]})
+        steps.append((at(rng.choice((2, 3)), 10, 15), ask))
+
+    # 2) Record the commit decision mid-horizon; correct action w.p. q(c).
+    decide_day = rng.randint(7, 9)
+    if policy._fire():
+        action = policy._action(refs)
+        steps.append((at(decide_day, 10, 15), lambda a=action: do("record_decision", {
+            "about": DEAL, "type": "commit", "action": a,
+            "rationale": "Commit call grounded in Eng's feasibility read."})))
+
+    # 3-5) Inform Sales / CS / stakeholder AFTER the decision, each with the ref the grader reads.
+    def inform_day() -> int:
+        return min(14, decide_day + rng.randint(1, 3))
+    if policy._fire():
+        steps.append((at(inform_day(), 10, 16), lambda: do("send_message", {
+            "to": refs.ae, "body": "Commit call on the deal.", "refs": [DEAL]})))
+    if policy._fire():
+        steps.append((at(inform_day(), 10, 16), lambda: do("send_message", {
+            "to": refs.cs, "refs": [ACCOUNT_RISK], "body": "Weighed the account risk."})))
+    if policy._fire():
+        steps.append((at(inform_day(), 10, 16), lambda: do("send_message", {
+            "to": refs.stakeholder, "body": "Recorded the commit decision.", "refs": [DEAL]})))
+
+    return sorted(steps, key=lambda s: s[0])
 
 
 # --------------------------------------------------------------------------------------------------
@@ -152,55 +274,67 @@ class Rollout:
 
 
 def run_episode(
-    episode: int, seed: int, rng: random.Random, dist: Dist, workdir: Path, keep_canonical: bool,
+    episode: int, seed: int, rng: random.Random, dist: Dist, density: Density, workdir: Path,
+    keep_canonical: bool,
 ) -> Rollout:
-    """Mint a fresh instance, drive the competence-gated backbone through the real env, score it."""
+    """Mint a fresh instance, drive a DENSE 3-week PM trajectory (realistic activity ticked across
+    the horizon, with the competence-gated scoring backbone embedded at plausible points), score it.
+
+    Shape: skim inbox -> attend the standup -> then step the clock in small work-hours increments,
+    at each tick emitting a realistic non-scoring action (w.p. `activity_prob`) and firing any
+    backbone milestone the clock has reached. Every wait releases due background events (the
+    autonomous AE/CS chase), so they land in the trajectory and — for competent episodes — the
+    stakeholder informs that follow the decision are the reaction to them."""
     inst = generate(ARCHETYPE, seed, workdir / f"{ARCHETYPE}-{seed}")
     refs = resolve_refs(inst.out_dir, inst.summary["holder"])
     env = SaasWorldEnvironment()
     obs = env.reset(str(inst.out_dir), seed=seed)
     horizon = int(obs.metadata.get("horizon", 0))
     policy = CompetencePolicy(rng, dist)
+    surf = _surfaces(obs.state)
 
     trace: list[dict[str, Any]] = []
     errors = 0
 
     def do(verb: str, args: dict[str, Any]) -> None:
-        nonlocal obs
+        nonlocal obs, errors
         obs = env.step(SaasWorldAction(verb, args))
-        errors_here = bool(obs.metadata.get("error"))
-        nonlocal errors
-        errors += errors_here
+        errors += bool(obs.metadata.get("error"))
         trace.append(step_row(len(trace) + 1, verb, args, obs))
 
-    do("read_inbox", {})  # realism: skim the AE's kickoff email
+    do("read_inbox", {})  # skim the AE's kickoff email
+    if surf.standup:
+        do("attend_meeting", {"meeting": surf.standup})  # sit the D1 cross-functional standup
 
-    # 1) Ask Eng about the deal -> the reveal that flips feasibility_surfaced (system-sourced).
-    if policy._fire():
-        do("send_message", {"to": refs.holder, "refs": [DEAL],
-                            "body": "Can Eng land the deal by the promised date?"})
-        env._kernel.schedule(  # model the reveal deterministically, like solvers' fallback_deltas
-            env._kernel.now() + 50, "system", "reveal",
-            {"deltas": [{"op": "set",
-                         "path": "projects.deal.feasibility_surfaced", "value": True}]})
+    pending = _build_schedule(do, rng, refs, policy, env, surf)
 
-    do("read_channel", {"channel": "chan.deal"})  # realism
+    # Time-stepped envelope: advance in small work-hours increments across the ~15 working days,
+    # firing each backbone milestone as the clock passes it (a wait never overshoots the next one).
+    guard = 0
+    while not obs.done and obs.sim_time < horizon and guard < _MAX_TICKS:
+        guard += 1
+        while pending and pending[0][0] <= obs.sim_time:
+            pending.pop(0)[1]()
+        if obs.done:
+            break
+        day, tod = divmod(obs.sim_time, _DAY)
+        if tod < _WORK_START:                          # overnight -> jump to the morning
+            target = day * _DAY + _WORK_START
+        elif tod >= _WORK_END:                          # after hours -> jump to next morning
+            target = (day + 1) * _DAY + _WORK_START
+        else:                                           # in work hours -> act + a small step
+            if rng.random() < density.activity_prob:
+                _activity(do, rng, surf)
+            tick = rng.randint(density.tick_min // 2, density.tick_min * 2)
+            target = obs.sim_time + tick
+            if target >= day * _DAY + _WORK_END:        # end of day -> fold night into this wait
+                target = (day + 1) * _DAY + _WORK_START
+        if pending and obs.sim_time < pending[0][0] < target:  # don't skip past a milestone
+            target = pending[0][0]
+        do("wait", {"duration": max(1, target - obs.sim_time)})
 
-    # 2) Record the commit decision (commit_recorded); correct action w.p. q(c) (correct_commit).
-    if policy._fire():
-        do("record_decision", {"about": DEAL, "type": "commit", "action": policy._action(refs),
-                               "rationale": "Commit call grounded in Eng's feasibility read."})
-
-    # 3-5) Inform Sales / CS / stakeholder, each with the deterministic ref the grader reads.
-    if policy._fire():
-        do("send_message", {"to": refs.ae, "body": "Commit call on the deal.", "refs": [DEAL]})
-    do("get_tasks", {})  # realism
-    if policy._fire():
-        do("send_message", {"to": refs.cs, "refs": [ACCOUNT_RISK],
-                            "body": "Weighed the account risk."})
-    if policy._fire():
-        do("send_message", {"to": refs.stakeholder, "body": "Recorded the commit decision.",
-                            "refs": [DEAL]})
+    while pending and not obs.done:  # safety: fire any milestone the guard cut short, pre-terminal
+        pending.pop(0)[1]()
 
     # Advance past the horizon so the episode ends with a real, evaluator-produced score.
     if not obs.done and horizon:
@@ -249,6 +383,7 @@ def _histogram(rewards: list[float], bins: int = 10) -> list[int]:
 
 def _summary(rollouts: list[Rollout], dist: Dist) -> dict[str, Any]:
     rewards = [r.reward for r in rollouts if r.reward is not None]
+    steps = [r.steps for r in rollouts]
     passes = {p: 0 for p in _PREDICATES}
     graded = 0
     for r in rollouts:
@@ -262,6 +397,12 @@ def _summary(rollouts: list[Rollout], dist: Dist) -> dict[str, Any]:
         "episodes": len(rollouts),
         "scored": len(rewards),
         "distribution": {"c_min": dist.c_min, "c_max": dist.c_max, "q_exp": dist.q_exp},
+        "actions": {
+            "min": min(steps) if steps else None,
+            "median": round(statistics.median(steps), 1) if steps else None,
+            "mean": round(statistics.fmean(steps), 1) if steps else None,
+            "max": max(steps) if steps else None,
+        },
         "reward": {
             "mean": round(statistics.fmean(rewards), 4) if rewards else None,
             "min": round(min(rewards), 4) if rewards else None,
@@ -281,9 +422,10 @@ def _summary(rollouts: list[Rollout], dist: Dist) -> dict[str, Any]:
 
 
 def _print_summary(s: dict[str, Any]) -> None:
-    rw = s["reward"]
+    rw, ac = s["reward"], s["actions"]
     print(f"\ndeal-escalation rollouts over {s['episodes']} episodes  "
           f"(mean c={s['competence']['mean']})")
+    print(f"  actions  min={ac['min']}  median={ac['median']}  mean={ac['mean']}  max={ac['max']}")
     print(f"  reward   mean={rw['mean']}  min={rw['min']}  max={rw['max']}  "
           f"nonzero_bins={rw['nonzero_bins']}")
     print(f"  hist10   {rw['histogram_10']}")
@@ -302,6 +444,10 @@ def main() -> None:
     ap.add_argument("--c-max", type=float, default=1.0, help="competence upper bound")
     ap.add_argument("--q-exp", type=float, default=1.0,
                     help="q(c)=c**q_exp: P(correct action | decision recorded); >1 lowers it")
+    ap.add_argument("--tick-min", type=int, default=180,
+                    help="base work-hours advance per wait; lower=denser (more actions/episode)")
+    ap.add_argument("--activity-prob", type=float, default=0.6,
+                    help="P(a work-hours tick also emits one realistic non-scoring PM action)")
     ap.add_argument("--keep-canonical", type=int, default=25,
                     help="persist events.jsonl+snapshots for the first N episodes only")
     ap.add_argument("--quiet", action="store_true", help="suppress the per-episode line")
@@ -311,6 +457,7 @@ def main() -> None:
     logging.getLogger("saasworld.npc.engine").setLevel(logging.ERROR)
 
     dist = Dist(args.c_min, args.c_max, args.q_exp)
+    density = Density(args.tick_min, args.activity_prob)
     master = random.Random(args.master_seed)
     out = Path(args.out)
     out.mkdir(parents=True, exist_ok=True)
@@ -321,7 +468,7 @@ def main() -> None:
         for ep in range(1, args.episodes + 1):
             seed = master.randrange(1, 2**31)
             rng = random.Random(master.randrange(2**31))
-            roll = run_episode(ep, seed, rng, dist, workdir,
+            roll = run_episode(ep, seed, rng, dist, density, workdir,
                                keep_canonical=ep <= args.keep_canonical)
             rollouts.append(roll)
             _write_run_dir(out, roll)

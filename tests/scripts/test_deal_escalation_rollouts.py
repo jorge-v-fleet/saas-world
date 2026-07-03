@@ -8,6 +8,7 @@ from __future__ import annotations
 import importlib.util
 import json
 import random
+import statistics
 import sys
 import tempfile
 from pathlib import Path
@@ -22,20 +23,23 @@ _spec.loader.exec_module(der)
 
 def test_small_batch_writes_wellformed_nondegenerate_runs(tmp_path):
     dist = der.Dist(c_min=0.0, c_max=1.0, q_exp=1.0)
+    density = der.Density(tick_min=180, activity_prob=0.6)
     master = random.Random(0)
     out = tmp_path / "runs"
     out.mkdir()
 
     rewards: list[float] = []
+    steps: list[int] = []
     with tempfile.TemporaryDirectory() as tmp:
         workdir = Path(tmp)
         for ep in range(1, 31):  # small + fast
             seed = master.randrange(1, 2**31)
             rng = random.Random(master.randrange(2**31))
-            roll = der.run_episode(ep, seed, rng, dist, workdir, keep_canonical=ep <= 3)
+            roll = der.run_episode(ep, seed, rng, dist, density, workdir, keep_canonical=ep <= 3)
             der._write_run_dir(out, roll)
             assert roll.reward is not None  # every episode crosses the horizon -> real score
             rewards.append(roll.reward)
+            steps.append(roll.steps)
 
     run_dirs = sorted(out.glob("rollout-*"))
     assert len(run_dirs) == 30
@@ -53,3 +57,4 @@ def test_small_batch_writes_wellformed_nondegenerate_runs(tmp_path):
             assert 0.0 <= p["credit"] <= 1.0
 
     assert len(set(rewards)) >= 2  # non-degenerate on the sample
+    assert statistics.median(steps) > 20  # dense envelope, not the old few-actions-then-one-wait
