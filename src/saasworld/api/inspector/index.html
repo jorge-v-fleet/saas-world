@@ -296,57 +296,94 @@
       </div>`;
     };
 
+    // Waterfall swimlane: rows = events top→bottom (sim-time), columns = actors.
+    // A marker chip lands in each event's actor lane; clicking opens a slide-over drawer.
     const Timeline = ({ run }) => {
       const events = (run && run.events) || [];
-      const ordered = [...events].sort((a, b) =>
-        (a.seq != null && b.seq != null) ? a.seq - b.seq : events.indexOf(a) - events.indexOf(b));
+      // Order by sim_time (when it OCCURS), not seq (when it was enqueued): scenarios pre-schedule
+      // future events at setup, so seq-order would show those first then "restart" to t=0. Tie-break
+      // on seq for events at the same instant; seq still keys selection/causality below.
+      const ordered = [...events].sort((a, b) => {
+        if (a.sim_time != null && b.sim_time != null && a.sim_time !== b.sim_time) return a.sim_time - b.sim_time;
+        if (a.seq != null && b.seq != null) return a.seq - b.seq;
+        return events.indexOf(a) - events.indexOf(b);
+      });
       const [sel, setSel] = useState(null);
-      useEffect(() => setSel(ordered.length ? evKey(ordered[0], 0) : null), [run && run.run_id]);
+      const [open, setOpen] = useState(false);
+      useEffect(() => { setSel(null); setOpen(false); }, [run && run.run_id]);
       if (!run) return html`<div className="grid h-full place-items-center text-muted">select a run</div>`;
       if (!run.has_events) return html`<div className="grid h-full place-items-center px-8 text-center text-sm text-muted">
         no canonical event log for this run — regenerate it to enable the timeline.</div>`;
 
+      // Column order: agent left, system right, coworkers/NPCs in first-appearance order between.
+      const seen = [];
+      ordered.forEach((e) => { if (!seen.includes(e.actor)) seen.push(e.actor); });
+      const rank = (a) => a === "agent" ? 0 : a === "system" ? 2 : 1;
+      const actors = [...seen].sort((a, b) => rank(a) - rank(b) || seen.indexOf(a) - seen.indexOf(b));
+      const cols = `64px repeat(${actors.length}, minmax(120px, 1fr))`;
+
       const bySeq = {};
       ordered.forEach((e, i) => { bySeq[evKey(e, i)] = e; });
-      const cur = bySeq[sel] ?? ordered[0];
-      const curSeq = cur ? (cur.seq != null ? cur.seq : evKey(cur, ordered.indexOf(cur))) : null;
-      const effects = ordered.filter((e) => e.caused_by != null && e.caused_by === curSeq);
-      const cause = cur && cur.caused_by != null ? bySeq[cur.caused_by] : null;
-      const stateAt = foldState(run.opening, ordered, curSeq);
+      const cur = sel != null ? bySeq[sel] : null;
+      const curSeq = cur ? (cur.seq != null ? cur.seq : sel) : null;
+      const effects = cur ? ordered.filter((e) => e.caused_by != null && e.caused_by === curSeq) : [];
+      const effectSet = new Set(effects.map((e, i) => evKey(e, ordered.indexOf(e))));
+      const causeSeq = cur && cur.caused_by != null ? cur.caused_by : null;
+      const cause = causeSeq != null ? bySeq[causeSeq] : null;
+      const stateAt = cur ? foldState(run.opening, ordered, curSeq) : null;
+      const rowTone = (k) => k === sel ? "bg-accent/10" : k === causeSeq ? "bg-amber-500/5"
+        : effectSet.has(k) ? "bg-emerald-500/5" : "";
 
-      return html`<div className="grid h-full min-h-0 grid-cols-[minmax(0,340px)_1fr] gap-4">
-        <${Card} className="flex min-h-0 flex-col overflow-hidden">
-          <div className="border-b border-border px-3 py-2 text-xs font-medium uppercase tracking-wide text-zinc-500">events · ${ordered.length}</div>
-          <div className="min-h-0 flex-1 overflow-y-auto">
+      return html`<div className="relative flex h-full min-h-0 flex-col">
+        <div className="mb-2 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-zinc-500">
+          <span>waterfall · ${ordered.length} events · ${actors.length} actors</span>
+          <span className="text-zinc-600">time flows top → bottom · click a cell for details</span>
+        </div>
+        <${Card} className="min-h-0 flex-1 overflow-auto">
+          <div className="sticky top-0 z-10 grid border-b border-border bg-card" style=${{ gridTemplateColumns: cols }}>
+            <div className="px-2 py-2 text-[11px] font-medium uppercase tracking-wide text-zinc-500">t</div>
+            ${actors.map((a) => html`<div key=${a} className="flex items-center gap-1.5 border-l border-border px-2 py-2">
+              <span className=${"h-2 w-2 shrink-0 rounded-full " + actorDot(a)}></span>
+              <span className=${"truncate text-[11px] font-medium " + actorText(a)} title=${a}>${a}</span>
+            </div>`)}
+          </div>
+          <div className="grid" style=${{ gridTemplateColumns: cols }}>
             ${ordered.map((e, i) => {
-              const k = evKey(e, i), on = k === sel;
-              return html`<button key=${k} onClick=${() => setSel(k)}
-                className=${"flex w-full items-center gap-2 border-b border-border/50 px-3 py-2 text-left transition " +
-                  (on ? "bg-accent/10" : "hover:bg-zinc-900/60")}>
-                <span className=${"h-2 w-2 shrink-0 rounded-full " + actorDot(e.actor)}></span>
-                <span className="w-14 shrink-0 tabular-nums text-[11px] text-zinc-500">${e.sim_time ?? ""}</span>
-                <span className=${"w-16 shrink-0 truncate text-[11px] " + actorText(e.actor)} title=${e.actor}>${e.actor}</span>
-                <span className="truncate font-mono text-[12px] text-fg">${e.kind}</span>
-              </button>`;
+              const k = evKey(e, i), tone = rowTone(k);
+              const cells = [html`<div key=${k + "-t"} className=${"border-b border-border/40 px-2 py-1.5 tabular-nums text-[11px] text-zinc-500 " + tone}>${e.sim_time ?? ""}</div>`];
+              actors.forEach((a) => {
+                const hit = a === e.actor;
+                cells.push(html`<div key=${k + "-" + a} className=${"border-b border-l border-border/40 px-1.5 py-1.5 " + tone}>
+                  ${hit ? html`<button onClick=${() => { setSel(k); setOpen(true); }}
+                    className=${"flex w-full items-center gap-1.5 rounded-md px-2 py-1 text-left transition " +
+                      (k === sel ? "bg-accent/15 ring-1 ring-accent" : "hover:bg-zinc-800/70")}>
+                    <span className=${"h-1.5 w-1.5 shrink-0 rounded-full " + actorDot(e.actor)}></span>
+                    <span className="truncate font-mono text-[12px] text-fg" title=${e.kind}>${e.kind}</span>
+                  </button>` : null}
+                </div>`);
+              });
+              return cells;
             })}
           </div>
         </${Card}>
-        <div className="min-h-0 overflow-y-auto pr-1">
-          ${cur ? html`<div className="flex flex-col gap-4">
-            <div className="flex flex-wrap items-center gap-2">
-              <span className="tabular-nums text-xs text-zinc-500">seq ${curSeq} · t=${cur.sim_time ?? "—"}</span>
-              <span className=${"h-2 w-2 rounded-full " + actorDot(cur.actor)}></span>
-              <span className=${"text-xs " + actorText(cur.actor)}>${cur.actor}</span>
-              <span className="font-mono text-sm text-fg">${cur.kind}</span>
-            </div>
+        ${open && cur ? html`<div className="absolute inset-y-0 right-0 z-20 flex w-[380px] flex-col border-l border-border bg-card shadow-2xl">
+          <div className="flex items-center gap-2 border-b border-border px-4 py-3">
+            <span className="tabular-nums text-xs text-zinc-500">seq ${curSeq} · t=${cur.sim_time ?? "—"}</span>
+            <span className=${"h-2 w-2 rounded-full " + actorDot(cur.actor)}></span>
+            <span className=${"text-xs " + actorText(cur.actor)}>${cur.actor}</span>
+            <button onClick=${() => setOpen(false)}
+              className="ml-auto rounded-md px-2 py-1 text-zinc-400 transition hover:bg-zinc-800 hover:text-fg">✕</button>
+          </div>
+          <div className="flex min-h-0 flex-1 flex-col gap-4 overflow-y-auto p-4">
+            <div className="font-mono text-sm text-fg">${cur.kind}</div>
             <${Card} className="p-4">
               <div className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">what changed</div>
               <${DeltaPanel} delta=${cur.delta} />
             </${Card}>
             <${Card} className="p-4">
               <div className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">causality</div>
-              ${cause ? html`<button onClick=${() => setSel(cur.caused_by)}
-                className="block text-left text-[13px] text-sky-300 hover:underline">▲ caused by seq ${cur.caused_by} (${cause.kind})</button>`
+              ${cause ? html`<button onClick=${() => setSel(causeSeq)}
+                className="block text-left text-[13px] text-sky-300 hover:underline">▲ caused by seq ${causeSeq} (${cause.kind})</button>`
                 : html`<div className="text-[13px] text-muted">▲ no cause (root event)</div>`}
               ${effects.length ? html`<div className="mt-2 flex flex-col gap-1">
                 ${effects.map((e, i) => html`<button key=${i} onClick=${() => setSel(evKey(e, ordered.indexOf(e)))}
@@ -358,8 +395,8 @@
                 <pre className=${preCls + " mt-2 text-zinc-300"}>${JSON.stringify(stateAt, null, 2)}</pre>
               </${Collapsible}>
             </${Card}>` : null}
-          </div>` : html`<div className="grid h-full place-items-center text-muted">select an event</div>`}
-        </div>
+          </div>
+        </div>` : null}
       </div>`;
     };
 
