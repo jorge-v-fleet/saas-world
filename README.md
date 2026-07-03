@@ -53,6 +53,35 @@ checkpoint, then the deterministic evaluator's final score (full breakdown in
 Prefer a shell? The `saasworld` CLI drives the same loop one command at a time — see
 [Operator CLI](docs/saas-world/cli.md).
 
+### Example: a template LLM agent
+
+`scripts/pm_agent_llm.py` is a ready-to-run PM agent — Claude decides each action via tool-use, with
+the tool set and system prompt derived from `data/actions.json`, so it tracks the catalog/scenario
+automatically. It talks to the env over HTTP and maps each tool call to `env.step`; point-of-view
+(hiding unsurfaced blockers) is enforced in the script, so discovery stays real.
+
+```
+# 1 · start the env with the NPC parser LIVE so novel agent messages classify, into a scratch
+#     cassette (the committed one is never touched):
+SAASWORLD_LLM_MODE=record SAASWORLD_CASSETTE=/tmp/agent_cassette.jsonl \
+    ANTHROPIC_API_KEY=sk-... saasworld-env-serve
+
+# 2 · run the agent (its brain also needs a key):
+ANTHROPIC_API_KEY=sk-... python scripts/pm_agent_llm.py --scenario checkout-not-ready
+#     -> writes runs/agent-<scenario>-<ts>/ ; open the inspector UI to replay it
+```
+
+No key handy? Two offline modes need none:
+
+```
+python scripts/pm_agent_llm.py --self-test     # fixed policy that solves the scenario — smoke the loop
+python scripts/pm_agent_llm.py --print-tools   # inspect the derived tools + system prompt, no API call
+```
+
+See the [Agent SDK](docs/saas-world/agent-sdk.md) guide for the contract this script is built on and
+[NPC replies & novel messages](docs/saas-world/npc-replies.md) for why the live parser + scratch
+cassette are needed.
+
 ## Documentation
 
 Subsystem guides live under [`docs/saas-world/`](docs/saas-world/):
