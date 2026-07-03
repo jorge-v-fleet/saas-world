@@ -97,6 +97,23 @@ with SaasWorldEnv("http://127.0.0.1:8092") as env:
 
 `SaasWorldEnvironment` (server-side) is also usable in-process without HTTP; `env.step(...)` returns the `SaasWorldObservation` directly. One environment = one session (single writer) — run one process per concurrent episode.
 
+### NPC replies & novel messages
+
+By default the NPC parser runs **offline in replay mode**: it classifies each message body by looking it up in a committed cassette (`tests/cassettes/default.jsonl`). The scenario bodies shown above are recorded, so coworkers reply for real, key-free.
+
+A **novel** free-text body the cassette doesn't cover (any agent that phrases things its own way) can't be classified offline. The engine then **fails closed** — it bypasses the decision core so no gated fact can leak on an unclassifiable message — and the coworker replies with a bare acknowledgement (`"Ack."`). The sim stays live; this is by design, not an error. It's logged once per process as a single `INFO` line (not a traceback); raise `saasworld.npc.engine` to `WARNING` to silence it entirely.
+
+To get real replies to novel messages, **record** them against a live model once (needs a key only at record time), then replay against the enriched cassette key-free:
+
+```
+# record: drive your agent against the env in record mode; novel messages append to the cassette
+make record-cassette CASSETTE=/tmp/agent.jsonl           # needs ANTHROPIC_API_KEY
+#   (or: SAASWORLD_LLM_MODE=record SAASWORLD_CASSETTE=/tmp/agent.jsonl saasworld-env-serve)
+
+# replay: subsequent offline runs now classify those bodies for real
+SAASWORLD_CASSETTE=/tmp/agent.jsonl saasworld-env-serve
+```
+
 ## Advanced — authoring & generating scenarios
 
 Only needed to add *new* cases to the dataset; the pre-built scenarios above need none of this. Build-time is offline, no service (the Seeding Engine):
@@ -123,7 +140,7 @@ pytest -m <marker>           # one system in isolation; markers:
 ruff check . && mypy src
 ```
 
-No `ANTHROPIC_API_KEY` is needed; set one only to refresh the cassette (`pytest -m llm --record`).
+No `ANTHROPIC_API_KEY` is needed; set one only to record new cassette entries — see [NPC replies & novel messages](#npc-replies--novel-messages).
 
 ## Library APIs
 

@@ -1,0 +1,209 @@
+<!doctype html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>saas-world · trajectory inspector</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    // shadcn-ish design tokens (zinc/neutral dark theme). No build step: Tailwind Play CDN.
+    tailwind.config = {
+      darkMode: "class",
+      theme: { extend: { colors: {
+        bg: "#09090b", card: "#0f0f11", border: "#27272a", muted: "#a1a1aa",
+        fg: "#fafafa", accent: "#6366f1",
+      }}},
+    };
+  </script>
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js" crossorigin></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js" crossorigin></script>
+  <script type="module">
+    import htm from "https://unpkg.com/htm@3.1.1/dist/htm.module.js";
+    const html = htm.bind(React.createElement);
+    const { useState, useEffect } = React;
+
+    const api = (p) => fetch(p).then((r) => r.json());
+
+    // ── shadcn-styled primitives (thin wrappers, no component lib) ──────────────
+    const Badge = ({ children, tone = "muted" }) => {
+      const tones = {
+        agent: "bg-indigo-500/15 text-indigo-300 border-indigo-500/30",
+        random: "bg-amber-500/15 text-amber-300 border-amber-500/30",
+        cli: "bg-sky-500/15 text-sky-300 border-sky-500/30",
+        unknown: "bg-zinc-500/15 text-zinc-300 border-zinc-500/30",
+        muted: "bg-zinc-500/15 text-zinc-300 border-zinc-500/30",
+        pass: "bg-emerald-500/15 text-emerald-300 border-emerald-500/30",
+        fail: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+        pending: "bg-zinc-500/15 text-zinc-400 border-zinc-500/30",
+        error: "bg-rose-500/15 text-rose-300 border-rose-500/30",
+      };
+      return html`<span className=${"inline-flex items-center rounded-md border px-2 py-0.5 text-xs font-medium " + (tones[tone] || tones.muted)}>${children}</span>`;
+    };
+
+    const rewardTone = (r) => r == null ? "text-zinc-500" : r >= 0.7 ? "text-emerald-400" : r >= 0.4 ? "text-amber-400" : "text-rose-400";
+    const rewardBar = (r) => r == null ? "bg-zinc-700" : r >= 0.7 ? "bg-emerald-500" : r >= 0.4 ? "bg-amber-500" : "bg-rose-500";
+    const fmtReward = (r) => r == null ? "—" : Number(r).toFixed(3);
+
+    const Card = ({ children, className = "" }) =>
+      html`<div className=${"rounded-lg border border-border bg-card " + className}>${children}</div>`;
+
+    // ── run list (sidebar) ──────────────────────────────────────────────────────
+    const RunList = ({ runs, selected, onSelect }) => html`
+      <div className="flex flex-col gap-1.5">
+        ${runs.map((r) => html`
+          <button key=${r.run_id} onClick=${() => onSelect(r.run_id)}
+            className=${"w-full text-left rounded-lg border px-3 py-2 transition " +
+              (selected === r.run_id ? "border-accent bg-accent/10" : "border-border bg-card hover:border-zinc-600")}>
+            <div className="flex items-center justify-between gap-2">
+              <${Badge} tone=${r.kind}>${r.kind}</${Badge}>
+              <span className=${"text-sm font-semibold tabular-nums " + rewardTone(r.final_reward)}>${fmtReward(r.final_reward)}</span>
+            </div>
+            <div className="mt-1 truncate text-xs text-muted" title=${r.run_id}>${r.run_id}</div>
+            <div className="mt-0.5 text-[11px] text-zinc-500">${r.scenario} · ${r.actions} actions</div>
+          </button>`)}
+      </div>`;
+
+    // ── score panel ───────────────────────────────────────────────────────────
+    const ScorePanel = ({ score }) => {
+      if (!score) return html`<div className="text-sm text-muted">no score.json — episode did not reach the horizon</div>`;
+      const preds = (score.checkpoints || []).flatMap((c) => c.predicates || []);
+      const rows = [...preds, ...(score.artifact_results || [])];
+      return html`
+        <div className="flex flex-col gap-3">
+          <div>
+            <div className="flex items-baseline justify-between">
+              <span className="text-sm text-muted">final reward</span>
+              <span className=${"text-lg font-bold tabular-nums " + rewardTone(score.final)}>${fmtReward(score.final)}</span>
+            </div>
+            <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-zinc-800">
+              <div className=${"h-full " + rewardBar(score.final)} style=${{ width: (100 * (score.final || 0)) + "%" }}></div>
+            </div>
+            <div className="mt-1 text-[11px] text-zinc-500">weights sum = ${score.weights_sum ?? "—"}</div>
+          </div>
+          <table className="w-full text-sm">
+            <thead><tr className="text-left text-xs text-muted">
+              <th className="py-1 font-medium">predicate</th><th className="font-medium">w</th>
+              <th className="font-medium">credit</th><th className="font-medium">status</th></tr></thead>
+            <tbody>
+              ${rows.map((p, i) => html`<tr key=${i} className="border-t border-border align-top">
+                <td className="py-1.5 pr-2"><div className="font-mono text-[13px]">${p.id}</div>
+                  <div className="text-[11px] text-zinc-500">${p.reason}</div></td>
+                <td className="tabular-nums text-zinc-400">${p.weight}</td>
+                <td className=${"tabular-nums " + rewardTone(p.credit)}>${p.credit}</td>
+                <td><${Badge} tone=${p.status === "pass" ? "pass" : p.status === "pending" ? "pending" : "fail"}>${p.status}</${Badge}></td>
+              </tr>`)}
+            </tbody>
+          </table>
+        </div>`;
+    };
+
+    // ── raw trajectory table ────────────────────────────────────────────────────
+    const TrajectoryTable = ({ rows }) => {
+      const [open, setOpen] = useState(null);
+      if (!rows.length) return html`<div className="text-sm text-muted">empty trajectory</div>`;
+      return html`
+        <table className="w-full text-sm">
+          <thead><tr className="text-left text-xs text-muted border-b border-border">
+            <th className="py-2 pr-2 font-medium">#</th><th className="pr-2 font-medium">actor</th>
+            <th className="pr-2 font-medium">action</th><th className="pr-2 font-medium">t</th>
+            <th className="pr-2 font-medium">reward</th><th className="pr-2 font-medium">events</th>
+            <th className="font-medium"></th></tr></thead>
+          <tbody>
+            ${rows.map((r) => {
+              const isOpen = open === r.i;
+              const hasArgs = r.args && Object.keys(r.args || {}).length;
+              return html`
+                <${React.Fragment} key=${r.i}>
+                  <tr onClick=${() => setOpen(isOpen ? null : r.i)}
+                      className=${"border-b border-border/60 cursor-pointer hover:bg-zinc-900/60 " + (r.error ? "bg-rose-950/20" : "")}>
+                    <td className="py-1.5 pr-2 tabular-nums text-zinc-500">${r.i}</td>
+                    <td className="pr-2 text-zinc-400">${r.actor}</td>
+                    <td className="pr-2"><span className="font-mono text-[13px] text-fg">${r.label}</span>
+                      ${r.error ? html` <${Badge} tone="error">err${r.error.code ? " " + r.error.code : ""}</${Badge}>` : null}</td>
+                    <td className="pr-2 tabular-nums text-zinc-400">${r.sim_time}</td>
+                    <td className=${"pr-2 tabular-nums " + rewardTone(r.reward)}>${r.reward == null ? "" : fmtReward(r.reward)}</td>
+                    <td className="pr-2 text-[11px] text-zinc-500">${(r.events || []).join(", ")}</td>
+                    <td className="text-zinc-600 text-xs">${hasArgs ? (isOpen ? "▾" : "▸") : ""}</td>
+                  </tr>
+                  ${isOpen && hasArgs ? html`<tr className="border-b border-border/60"><td colSpan="7" className="bg-zinc-950/60 p-0">
+                    <pre className="overflow-x-auto px-4 py-2 text-[12px] leading-relaxed text-zinc-300">${JSON.stringify(r.args, null, 2)}</pre>
+                    ${r.error ? html`<pre className="overflow-x-auto px-4 py-2 text-[12px] text-rose-300">${JSON.stringify(r.error, null, 2)}</pre>` : null}
+                  </td></tr>` : null}
+                </${React.Fragment}>`;
+            })}
+          </tbody>
+        </table>`;
+    };
+
+    // ── main run view ─────────────────────────────────────────────────────────
+    const Tabs = ({ tabs, active, onTab }) => html`
+      <div className="flex gap-1 border-b border-border">
+        ${tabs.map((t) => html`<button key=${t.id} disabled=${t.disabled} onClick=${() => onTab(t.id)}
+          className=${"px-3 py-2 text-sm -mb-px border-b-2 transition " +
+            (t.disabled ? "text-zinc-600 cursor-not-allowed border-transparent" :
+             active === t.id ? "border-accent text-fg" : "border-transparent text-muted hover:text-fg")}>${t.label}</button>`)}
+      </div>`;
+
+    const RunView = ({ run }) => {
+      const [tab, setTab] = useState("trajectory");
+      useEffect(() => setTab("trajectory"), [run && run.run_id]);
+      if (!run) return html`<div className="grid h-full place-items-center text-muted">select a run</div>`;
+      const m = run.manifest || {};
+      const tabs = [
+        { id: "trajectory", label: "Trajectory" },
+        { id: "score", label: "Score" },
+        { id: "conversation", label: "Conversation", disabled: !run.has_messages },
+      ];
+      return html`
+        <div className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-center gap-3">
+            <${Badge} tone=${run.kind}>${run.kind}</${Badge}>
+            <span className="font-mono text-sm text-fg">${run.run_id}</span>
+            <span className="text-xs text-muted">${m.scenario || m.scenario_id || ""}${m.model ? " · " + m.model : ""}${m.brain ? " · " + m.brain : ""}</span>
+            <span className=${"ml-auto text-2xl font-bold tabular-nums " + rewardTone(run.score && run.score.final)}>${fmtReward(run.score && run.score.final)}</span>
+          </div>
+          <${Tabs} tabs=${tabs} active=${tab} onTab=${setTab} />
+          ${tab === "trajectory" ? html`<${Card} className="p-4"><${TrajectoryTable} rows=${run.trajectory} /></${Card}>` : null}
+          ${tab === "score" ? html`<${Card} className="p-4"><${ScorePanel} score=${run.score} /></${Card}>` : null}
+          ${tab === "conversation" ? html`<${Card} className="p-4 text-sm text-muted">conversation view — coming next</${Card}>` : null}
+        </div>`;
+    };
+
+    // ── app shell ───────────────────────────────────────────────────────────────
+    const App = () => {
+      const [runs, setRuns] = useState([]);
+      const [runsDir, setRunsDir] = useState("");
+      const [selected, setSelected] = useState(null);
+      const [run, setRun] = useState(null);
+
+      useEffect(() => { api("/inspector/api/runs").then((d) => {
+        setRuns(d.runs); setRunsDir(d.runs_dir);
+        if (d.runs.length) setSelected(d.runs[0].run_id);
+      }); }, []);
+      useEffect(() => { if (selected) { setRun(null); api("/inspector/api/runs/" + selected).then(setRun); } }, [selected]);
+
+      return html`
+        <div className="mx-auto flex h-screen max-w-[1400px] flex-col">
+          <header className="flex items-baseline gap-3 border-b border-border px-6 py-3">
+            <h1 className="text-sm font-semibold tracking-tight">saas-world <span className="text-muted">· trajectory inspector</span></h1>
+            <span className="ml-auto font-mono text-[11px] text-zinc-600">${runsDir}</span>
+          </header>
+          <div className="grid flex-1 grid-cols-[300px_1fr] gap-6 overflow-hidden px-6 py-4">
+            <aside className="flex flex-col gap-2 overflow-y-auto pr-1">
+              <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">runs · ${runs.length}</div>
+              <${RunList} runs=${runs} selected=${selected} onSelect=${setSelected} />
+            </aside>
+            <main className="overflow-y-auto pr-1">
+              <${RunView} run=${run} />
+            </main>
+          </div>
+        </div>`;
+    };
+
+    ReactDOM.createRoot(document.getElementById("root")).render(html`<${App} />`);
+  </script>
+</head>
+<body class="bg-bg text-fg antialiased">
+  <div id="root" class="grid h-screen place-items-center text-muted">loading…</div>
+</body>
+</html>

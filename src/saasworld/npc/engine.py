@@ -14,12 +14,28 @@ from typing import Any
 from ..events import Event
 from ..kernel import Kernel
 from ..llm.parser import LLMParser, Persona
+from ..llm.protocols import CacheMiss
 from .decision import Decision, decide
 
 _DEFAULT_DELAY_MIN = 60
 _FALLBACK_ACK = "Ack."  # deterministic, LLM-free reply used when the parser fails
 
 logger = logging.getLogger(__name__)
+
+# In replay (the default, key-free) mode a novel free-text message isn't in the cassette, so the
+# parser fails on nearly every message a real agent sends — expected, not a fault. Log the first
+# such degradation per process at INFO (with the fix hint), the rest at DEBUG, so served output
+# stays clean instead of flooding with tracebacks. A genuinely unexpected error stays loud.
+_notified = False
+
+
+def _log_expected(msg: str, *args: Any) -> None:
+    global _notified
+    if not _notified:
+        _notified = True
+        logger.info(msg + " — set SAASWORLD_LLM_MODE=record to capture novel messages", *args)
+    else:
+        logger.debug(msg, *args)
 
 
 class NPCEngine:
@@ -64,12 +80,17 @@ class NPCEngine:
         persona = Persona.from_config(npc)
         try:
             intent = self.parser.parse_intent(payload.get("body", ""), persona)
+        except (CacheMiss, ValueError) as exc:
+            # Expected: a novel body isn't in the cassette (CacheMiss) or the model returned an
+            # out-of-enum intent (ValueError). Fail CLOSED — the core is bypassed so no gated fact
+            # can leak on an unclassifiable message — and keep the sim live with a bare ack.
+            _log_expected("npc_reply: unclassified message from %s (seq=%s) [%s]; bare ack",
+                          payload.get("npc"), event.seq, type(exc).__name__)
+            decision = Decision(reply={"kind": "ack", "refs": [], "fields": {}})
         except Exception:
-            # Parser failed (cache miss / out-of-enum / API error): fail CLOSED — the core is
-            # bypassed so no gated fact can leak on an unclassifiable message — but keep the sim
-            # live with a fixed bare acknowledgement.
-            logger.warning("npc_reply: parse failed for %s (seq=%s); degrading to bare ack",
-                           payload.get("npc"), event.seq, exc_info=True)
+            # Unexpected (e.g. a real API error in record mode): keep it loud with a traceback.
+            logger.warning("npc_reply: parse failed unexpectedly for %s (seq=%s); degrading to "
+                           "bare ack", payload.get("npc"), event.seq, exc_info=True)
             decision = Decision(reply={"kind": "ack", "refs": [], "fields": {}})
         else:
             decision = decide(npc, intent, payload.get("args", {}), kernel.state.snapshot())
@@ -94,11 +115,16 @@ class NPCEngine:
             text = self.parser.render_reply(
                 {"intent_out": decision.reply.get("kind"), "disclosed_facts": disclosed}, persona
             )
+        except CacheMiss as exc:
+            # Expected in replay: this reply shape isn't in the cassette. The structured reply
+            # (kind/refs and any already-applied reveal) still stands; only the prose degrades.
+            _log_expected("npc_reply: unrendered reply for %s [%s]; bare ack text",
+                          persona.id, type(exc).__name__)
+            text = _FALLBACK_ACK
         except Exception:
-            # Render failed: the structured reply (kind/refs and any already-applied reveal) still
-            # stands; only the prose degrades to a fixed acknowledgement.
-            logger.warning("npc_reply: render failed for %s; using bare ack text", persona.id,
-                           exc_info=True)
+            # Unexpected error while rendering: keep it loud with a traceback.
+            logger.warning("npc_reply: render failed unexpectedly for %s; using bare ack text",
+                           persona.id, exc_info=True)
             text = _FALLBACK_ACK
         return {
             "op": "append",

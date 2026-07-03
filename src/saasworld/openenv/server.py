@@ -12,6 +12,8 @@ from typing import Any
 
 from fastapi import FastAPI, Request
 
+from saasworld.api.inspector import router as inspector_router
+
 from .environment import SaasWorldEnvironment
 from .types import SaasWorldAction, SaasWorldObservation, StepResult
 
@@ -25,6 +27,7 @@ def create_env_app(env: SaasWorldEnvironment | None = None) -> FastAPI:
     environment = env or SaasWorldEnvironment()
     app = FastAPI(title="saas-world OpenEnv environment")
     app.state.env = environment  # exposed for tests
+    app.include_router(inspector_router)  # read-only trajectory inspector UI over runs/
 
     @app.get("/health")
     def health() -> dict[str, str]:

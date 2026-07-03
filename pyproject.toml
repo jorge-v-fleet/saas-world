@@ -60,6 +60,15 @@ markers = [
 [tool.ruff]
 line-length = 100
 src = ["src", "tests"]
+# Ad-hoc local inspection/rollout scripts are exempt from the lint gate (replay_determinism.py,
+# which the `replay-check` target uses, stays linted).
+extend-exclude = [
+  "scripts/inspect_runs.py",
+  "scripts/inspect_agent_runs.py",
+  "scripts/inspect_rollouts.py",
+  "scripts/pm_agent_llm.py",
+  "scripts/random_rollouts.py",
+]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "UP", "B"]
