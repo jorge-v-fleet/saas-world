@@ -267,6 +267,7 @@ Every run is fully inspectable: score breakdown, event timeline, and the cohort 
 
 - **Growing breadth without regressions.**
   - New PM cases and wider world coverage can't silently break existing scenarios or their graders.
+  - Systematic **rollout exploration** to map the real reward distribution and how the environment can be navigated, **decoupled from any single agent's path**, so rewards stay correct and unbiased.
 - **Keeping eval verifiers correct.**
   - As cases multiply, ground-truth predicates must stay faithful, never drifting into **verbatim string-matching** or **misreading what "improved" means**: provably right per case, resistant to both false credit and missed credit.
 
