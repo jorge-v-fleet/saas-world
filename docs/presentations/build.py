@@ -69,8 +69,34 @@ SHOTS = (
 '<p class="inspector-link">explore any run live &rarr; <a href="http://127.0.0.1:8092/inspector">127.0.0.1:8092/inspector</a></p>'
 )
 
+TRANS = (
+'<div class="diag diag-trans"><div class="tflow">'
+  '<div class="tpanel"><div class="tp-h">START &middot; seed.json</div>'
+    '<div class="tp-body">'
+      '<span class="k">tasks.f1.validated</span> = <span class="vf">false</span><br>'
+      '<span class="k">blockers.regression.resolved</span> = <span class="vf">false</span><br>'
+      '<span class="k">projects.billing_v2.true_status</span> = <span class="v">at_risk</span>'
+    '</div>'
+  '</div>'
+  '<div class="tstep"><span class="arr">&rarr;</span><small>agent books<br>calendar &ldquo;validate f1&rdquo;</small></div>'
+  '<div class="tpanel hub"><div class="tp-h">EVENT &middot; ev.validate_f1 @ D6T15:00</div>'
+    '<div class="tp-body">'
+      '<span class="lbl">gated_on</span> calendar[title==<span class="v">&lsquo;validate f1&rsquo;</span>] &check;<br>'
+      '<span class="lbl">delta</span> set <span class="k">tasks.f1.validated</span> = <span class="vt">true</span>'
+    '</div>'
+  '</div>'
+  '<div class="tstep"><span class="arr">&rarr;</span><small>Kernel applies<br>single writer</small></div>'
+  '<div class="tpanel"><div class="tp-h">NEXT STATE</div>'
+    '<div class="tp-body big">'
+      '<span class="k">tasks.f1.validated</span>:<br><span class="vf">false</span> &rarr; <span class="vt">true</span>'
+    '</div>'
+  '</div>'
+'</div></div>'
+)
+
 src = re.sub(r"```diagram-system\n.*?\n```", lambda m: SYSTEM, src, flags=re.S)
 src = re.sub(r"```diagram-npc\n.*?\n```", lambda m: NPC, src, flags=re.S)
+src = re.sub(r"```diagram-transition\n.*?\n```", lambda m: TRANS, src, flags=re.S)
 src = re.sub(r"```shots\n.*?\n```", lambda m: SHOTS, src, flags=re.S)
 md = src.replace("</textarea>", "<\\/textarea>")
 
@@ -101,6 +127,7 @@ html = r"""<!DOCTYPE html>
   .reveal a{ color:inherit; text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:2px; }
   .reveal ul,.reveal ol{ margin-left:0.2em; }
   .reveal li{ margin:0.12em 0; }
+  .reveal li li{ font-size:0.95em; }   /* sub-bullets: don't compound the em, only a touch smaller */
   .reveal li::marker{ color:var(--faint); }
   /* code */
   .reveal pre{ width:100%; box-shadow:none; font-size:0.46em; line-height:1.5; margin:0.6em 0; }
@@ -109,7 +136,7 @@ html = r"""<!DOCTYPE html>
     line-height:1.6 !important; white-space:pre; overflow-x:auto; overflow-y:visible; }
   .reveal code:not(pre code){ font-family:'IBM Plex Mono',monospace; font-size:0.82em; background:#f2f2ef;
     padding:0.05em 0.34em; border-radius:4px; }
-  /* blockquote — editorial, thin rule */
+  /* blockquote: editorial, thin rule */
   .reveal blockquote{ width:100%; box-shadow:none; background:none; border-left:2px solid var(--ink);
     padding:0.1em 0 0.1em 1em; margin:0.7em 0; font-style:italic; color:var(--mut); font-size:0.72em; }
   .reveal blockquote strong{ color:var(--ink2); }
@@ -118,12 +145,15 @@ html = r"""<!DOCTYPE html>
   .reveal table th{ font-weight:500; font-style:italic; color:var(--mut); text-align:left;
     border-bottom:1.5px solid var(--ink); padding:0.3em 0.7em; }
   .reveal table td{ border-bottom:1px solid var(--line); padding:0.35em 0.7em; }
-  /* title / closing slides centered */
-  .reveal .slides>section:first-of-type,.reveal .slides>section:last-of-type{ text-align:center; }
+  /* title slide centered */
+  .reveal .slides>section:first-of-type{ text-align:center; }
   .reveal .slides>section:first-of-type h1{ margin-bottom:0.15em; }
   .reveal .slides>section:first-of-type strong{ display:inline-block; margin-top:1.4em; font-weight:500;
     letter-spacing:0.02em; }
-  .reveal .slides>section:last-of-type p{ color:var(--mut); font-size:0.7em; }
+  /* footnote */
+  .reveal .foot{ margin-top:0.6em; padding-top:0.5em; border-top:1px solid var(--line);
+    color:var(--mut); font-style:italic; font-size:0.52em; line-height:1.4; }
+  .reveal .foot code{ font-style:normal; font-size:0.9em; }
   /* pagination */
   .reveal .slide-number{ background:none; color:var(--faint); font-family:'Lora',serif; font-style:italic; }
   /* ---------- diagrams ---------- */
@@ -143,6 +173,23 @@ html = r"""<!DOCTYPE html>
     font-style:italic; color:var(--mut); font-size:0.42em; letter-spacing:0.02em; }
   .diag .loads{ text-align:center; color:var(--mut); font-style:italic; font-size:0.44em; margin:2px 0; }
   .diag .loads .down{ display:block; font-style:normal; font-size:1.5em; color:#a0a0a0; line-height:1; }
+  /* ---------- state transition ---------- */
+  .diag-trans .tflow{ display:flex; align-items:stretch; justify-content:center; gap:6px; flex-wrap:nowrap; margin:0.4em 0; }
+  .diag-trans .tpanel{ border:1px solid #c4c4c4; border-radius:6px; background:#fff; min-width:0; flex:1 1 0; overflow:hidden; }
+  .diag-trans .tpanel.hub{ border-color:var(--ink); border-width:1.5px; }
+  .diag-trans .tp-h{ font-style:italic; color:var(--mut); font-size:0.4em; padding:7px 11px;
+    border-bottom:1px solid var(--line); background:#faf9f7; white-space:nowrap; }
+  .diag-trans .tp-body{ font-family:'IBM Plex Mono',monospace; font-size:0.4em; line-height:1.9;
+    padding:10px 11px; color:var(--ink2); white-space:nowrap; }
+  .diag-trans .tp-body.big{ font-size:0.52em; line-height:1.7; }
+  .diag-trans .tstep{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; flex:0 0 auto; }
+  .diag-trans .tstep .arr{ font-size:0.8em; color:#a0a0a0; }
+  .diag-trans .tstep small{ font-style:italic; color:var(--mut); font-size:0.4em; text-align:center; line-height:1.3; }
+  .diag-trans .k{ color:#6a4a9c; }
+  .diag-trans .lbl{ color:var(--mut); font-style:italic; display:inline-block; min-width:56px; }
+  .diag-trans .vf{ color:#b06a00; }
+  .diag-trans .vt{ color:#2f7a2f; font-weight:600; }
+  .diag-trans .v{ color:var(--ink2); }
   /* ---------- rollout screenshots ---------- */
   .shots{ display:flex; gap:16px; justify-content:center; align-items:flex-start; margin:0.6em 0 0.2em; }
   .shots figure{ margin:0; flex:1 1 0; min-width:0; text-align:center; }

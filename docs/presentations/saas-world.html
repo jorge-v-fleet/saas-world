@@ -25,6 +25,7 @@
   .reveal a{ color:inherit; text-decoration:underline; text-decoration-thickness:1px; text-underline-offset:2px; }
   .reveal ul,.reveal ol{ margin-left:0.2em; }
   .reveal li{ margin:0.12em 0; }
+  .reveal li li{ font-size:0.95em; }   /* sub-bullets: don't compound the em, only a touch smaller */
   .reveal li::marker{ color:var(--faint); }
   /* code */
   .reveal pre{ width:100%; box-shadow:none; font-size:0.46em; line-height:1.5; margin:0.6em 0; }
@@ -33,7 +34,7 @@
     line-height:1.6 !important; white-space:pre; overflow-x:auto; overflow-y:visible; }
   .reveal code:not(pre code){ font-family:'IBM Plex Mono',monospace; font-size:0.82em; background:#f2f2ef;
     padding:0.05em 0.34em; border-radius:4px; }
-  /* blockquote — editorial, thin rule */
+  /* blockquote: editorial, thin rule */
   .reveal blockquote{ width:100%; box-shadow:none; background:none; border-left:2px solid var(--ink);
     padding:0.1em 0 0.1em 1em; margin:0.7em 0; font-style:italic; color:var(--mut); font-size:0.72em; }
   .reveal blockquote strong{ color:var(--ink2); }
@@ -42,12 +43,15 @@
   .reveal table th{ font-weight:500; font-style:italic; color:var(--mut); text-align:left;
     border-bottom:1.5px solid var(--ink); padding:0.3em 0.7em; }
   .reveal table td{ border-bottom:1px solid var(--line); padding:0.35em 0.7em; }
-  /* title / closing slides centered */
-  .reveal .slides>section:first-of-type,.reveal .slides>section:last-of-type{ text-align:center; }
+  /* title slide centered */
+  .reveal .slides>section:first-of-type{ text-align:center; }
   .reveal .slides>section:first-of-type h1{ margin-bottom:0.15em; }
   .reveal .slides>section:first-of-type strong{ display:inline-block; margin-top:1.4em; font-weight:500;
     letter-spacing:0.02em; }
-  .reveal .slides>section:last-of-type p{ color:var(--mut); font-size:0.7em; }
+  /* footnote */
+  .reveal .foot{ margin-top:0.6em; padding-top:0.5em; border-top:1px solid var(--line);
+    color:var(--mut); font-style:italic; font-size:0.52em; line-height:1.4; }
+  .reveal .foot code{ font-style:normal; font-size:0.9em; }
   /* pagination */
   .reveal .slide-number{ background:none; color:var(--faint); font-family:'Lora',serif; font-style:italic; }
   /* ---------- diagrams ---------- */
@@ -67,6 +71,23 @@
     font-style:italic; color:var(--mut); font-size:0.42em; letter-spacing:0.02em; }
   .diag .loads{ text-align:center; color:var(--mut); font-style:italic; font-size:0.44em; margin:2px 0; }
   .diag .loads .down{ display:block; font-style:normal; font-size:1.5em; color:#a0a0a0; line-height:1; }
+  /* ---------- state transition ---------- */
+  .diag-trans .tflow{ display:flex; align-items:stretch; justify-content:center; gap:6px; flex-wrap:nowrap; margin:0.4em 0; }
+  .diag-trans .tpanel{ border:1px solid #c4c4c4; border-radius:6px; background:#fff; min-width:0; flex:1 1 0; overflow:hidden; }
+  .diag-trans .tpanel.hub{ border-color:var(--ink); border-width:1.5px; }
+  .diag-trans .tp-h{ font-style:italic; color:var(--mut); font-size:0.4em; padding:7px 11px;
+    border-bottom:1px solid var(--line); background:#faf9f7; white-space:nowrap; }
+  .diag-trans .tp-body{ font-family:'IBM Plex Mono',monospace; font-size:0.4em; line-height:1.9;
+    padding:10px 11px; color:var(--ink2); white-space:nowrap; }
+  .diag-trans .tp-body.big{ font-size:0.52em; line-height:1.7; }
+  .diag-trans .tstep{ display:flex; flex-direction:column; align-items:center; justify-content:center; gap:3px; flex:0 0 auto; }
+  .diag-trans .tstep .arr{ font-size:0.8em; color:#a0a0a0; }
+  .diag-trans .tstep small{ font-style:italic; color:var(--mut); font-size:0.4em; text-align:center; line-height:1.3; }
+  .diag-trans .k{ color:#6a4a9c; }
+  .diag-trans .lbl{ color:var(--mut); font-style:italic; display:inline-block; min-width:56px; }
+  .diag-trans .vf{ color:#b06a00; }
+  .diag-trans .vt{ color:#2f7a2f; font-weight:600; }
+  .diag-trans .v{ color:var(--ink2); }
   /* ---------- rollout screenshots ---------- */
   .shots{ display:flex; gap:16px; justify-content:center; align-items:flex-start; margin:0.6em 0 0.2em; }
   .shots figure{ margin:0; flex:1 1 0; min-width:0; text-align:center; }
@@ -95,13 +116,11 @@
 
 Drop an agent into a simulated PM work-week and see if it can actually do the job.
 
-- **Time advances by simulation**, through a work week — decoupled from how long the model thinks.
-- The agent works only through **internal tool surfaces** — chat, email, calendar, task tracking, docs, meeting capture.
-- **Coworkers are stateful** — own goals, background activity, proactive outreach, realistic reply delays.
+- **Time advances by simulation**, through a work week, decoupled from how long the model thinks.
+- The agent works only through **internal tool surfaces**: chat, email, calendar, task tracking, docs, meeting capture.
+- **Coworkers are stateful**: own goals, background activity, proactive outreach, realistic reply delays.
 - The agent must **discover blockers, resolve conflicts, prioritize tradeoffs, keep projects moving.**
-- The system **grades whether outcomes actually improved** — not whether the agent looked busy.
-
-> The hard parts are *systems* problems: state transitions, event delivery, information discoverability, long-horizon consistency, and **grading that resists reward hacking**.
+- The system **grades whether outcomes actually improved**, not whether the agent looked busy.
 
 ---
 
@@ -115,30 +134,29 @@ Two boundaries define the design: **build-time vs runtime**, and a **single writ
 
 ---
 
-## Simulation Kernel — the clock & single writer
+## Simulation Kernel: the clock & single writer
 
 - Holds `SimClock` + an **event queue** (min-heap by sim-time). **Next-event progression**: time jumps to the next scheduled event, never tracks wall-clock.
-- The **only path that mutates world state** — every change is an event applied here. One writer ⇒ no races, fully replayable.
+- The **only path that mutates world state**: every change is an event applied here. One writer ⇒ no races, fully replayable.
 - **Three action classes are the sync/async spine:**
-  - `observe` — zero-duration, no mutation; scoped read. *Clock still.*
-  - `mutate` — zero-duration state delta + immediate ack; may schedule follow-ups. *Clock still.*
-  - `advance` — carries a duration; **the only class that moves time.** `wait` is the simplest — no privileged "advance time" verb.
+  - `observe`: zero-duration, no mutation; scoped read. *Clock still.*
+  - `mutate`: zero-duration state delta + immediate ack; may schedule follow-ups. *Clock still.*
+  - `advance`: carries a duration; **the only class that moves time.** `wait` is the simplest, no privileged "advance time" verb.
 - Interface: `schedule(event)` · `advance_until(release)` · `now()`.
 
 > Answers *what is synchronous vs background*: agent mutations are instant; NPC replies, wake-ups, and scheduled pressure fire during an `advance` jump, delivered as time-ordered notifications.
 
 ---
 
-## World State Store — how the world is defined
+## World State Store: how the world is defined
 
-The world is a set of **namespaced partitions** — one typed store per concern — and every fact lives at a **path** (`tasks.f2.done`, `projects.feature_x.true_status`). That same path grammar is what actions write and what the grader reads.
+The world is a set of **namespaced partitions**, one typed store per concern, and every fact lives at a **path** (`tasks.f2.done`, `projects.feature_x.true_status`). That same path grammar is what actions write and what the grader reads.
 
 - **Core partitions (live):** `org · projects · tasks · blockers · surfaces` + the tool surfaces `chat · email · calendar · docs · decisions · messages`.
-- **Reserved seams (off until needed):** `cust · fin · seas` — customers / financials / seasonality. Enabling one never touches existing partitions.
-- **Tiers gate who is live:** `agent` (the PM under test) · `active` (full stateful NPC) · `reference` (org structure / mentions only). Promote a coworker by flipping a tier — no code.
-- **Reads are typed & scoped; writes happen *only* via Kernel-applied events** — one mutation path. Snapshot / restore gives exact replay.
+- **Tiers gate who is live:** `agent` (the PM under test) · `active` (full stateful NPC) · `reference` (org structure / mentions only). Promote a coworker by flipping a tier: no code.
+- **Reads are typed & scoped; writes happen *only* via Kernel-applied events**: one mutation path. Snapshot / restore gives exact replay.
 
-It's just data — loaded from `data/world/*`:
+It's just data, loaded from `data/world/*`:
 
 ```json
 company  { "id":"co.nimbus", "name":"Nimbus", "product":"B2B analytics SaaS", "stage":"series-b" }
@@ -148,13 +166,25 @@ task     { "tasks.f2": { "project":"feature_x", "owner":"org.fe_a1",
                          "done":false, "critical_path":true } }
 ```
 
+<p class="foot">Reserved for the future: <code>cust · fin · seas</code> (customers / financials / seasonality): declared but disabled today, enabled as new scenarios need them.</p>
+
 ---
 
-## Tool API — the agent's only surface
+## World State: how it changes
+
+Every change is an **event carrying a delta** (`op · path · value`), applied by the Kernel as the **single writer**. Reward-bearing facts flip only when the agent does the real work that *gates* them. No verb writes the field directly.
+
+<div class="diag diag-trans"><div class="tflow"><div class="tpanel"><div class="tp-h">START &middot; seed.json</div><div class="tp-body"><span class="k">tasks.f1.validated</span> = <span class="vf">false</span><br><span class="k">blockers.regression.resolved</span> = <span class="vf">false</span><br><span class="k">projects.billing_v2.true_status</span> = <span class="v">at_risk</span></div></div><div class="tstep"><span class="arr">&rarr;</span><small>agent books<br>calendar &ldquo;validate f1&rdquo;</small></div><div class="tpanel hub"><div class="tp-h">EVENT &middot; ev.validate_f1 @ D6T15:00</div><div class="tp-body"><span class="lbl">gated_on</span> calendar[title==<span class="v">&lsquo;validate f1&rsquo;</span>] &check;<br><span class="lbl">delta</span> set <span class="k">tasks.f1.validated</span> = <span class="vt">true</span></div></div><div class="tstep"><span class="arr">&rarr;</span><small>Kernel applies<br>single writer</small></div><div class="tpanel"><div class="tp-h">NEXT STATE</div><div class="tp-body big"><span class="k">tasks.f1.validated</span>:<br><span class="vf">false</span> &rarr; <span class="vt">true</span></div></div></div></div>
+
+> `tasks.f1.validated` flips **only because the agent booked the validation**: the field is otherwise unwritable. Same shape for every fact: seed value → gated event → one applied delta → next state.
+
+---
+
+## Tool API: the agent's only surface
 
 - Uniform envelope: **`verb + args`** → validated (arg schema + preconditions + the actor's view scope) → one event. The catalog is **data** (`data/actions.json`); adding a verb is a data entry, not new code.
 - Each catalog entry: `id · class · args · effect (delta DSL) · emits · pre · returns`. **Three classes by clock effect:** `observe · mutate · advance`.
-- **Free text is quarantined to bodies**; reward-bearing actions are structured (`record_decision`), so the grader reads fields, not prose.
+- **Prose can't earn score**: to move the grade the agent emits structured fields (`record_decision`, or a message's `refs`), which the grader reads directly.
 
 ```
 send_message    { to, body, refs? }                     mutate  → append messages; emits npc_reply @ now+delay
@@ -162,67 +192,90 @@ record_decision { about, type, action?, new_date?, owner? }  mutate  → append 
 wait            { duration }                            advance → release clock to now + duration
 ```
 
-> **Example:** `send_message{ to:"org.be_b2", body:"is payments ready for Friday?", refs:["blocker.psp_cert"] }` → parsed to intent `ask_status` → schedules the coworker's reply. `refs` is the structured pointer the grader trusts — never the prose.
+> **Example:** `send_message{ to:"org.be_b2", body:"is payments ready for Friday?", refs:["blocker.psp_cert"] }` → parsed to intent `ask_status` → schedules the coworker's reply. `refs` is the structured pointer the grader trusts, never the prose.
 
 ---
 
-## NPC Engine — stateful coworkers
+## NPC Engine: stateful coworkers
 
-- Per-persona **decision core is deterministic** — rules / state machine over a scoped world view + goals.
-- The **LLM is parser-only**: free text → a fixed intent set, and renders a reply *in voice* — it invents no facts and holds no authority.
+- Per-persona **decision core is deterministic**: rules / state machine over a scoped world view + goals.
+- The **LLM is parser-only**: free text → a fixed intent set, and renders a reply *in voice*, inventing no facts and holding no authority.
 - **Reactive replies** at `now + persona.delay`; **autonomous self-scheduled wake-ups** give each coworker independent cadence and proactive outreach.
-- A **blocker surfaces only via an NPC's reveal** — no agent action can flip `blocker.*.surfaced`, so discovery stays real.
+- A **blocker surfaces only via an NPC's reveal**: no agent action can flip `blocker.*.surfaced`, so discovery stays real.
 
 <div class="diag diag-npc"><div class="row"><div class="node soft"><b>agent free-text</b><small>message</small></div><span class="arr">&rarr;</span><div class="node"><b>LLM parser</b><small>text &rarr; fixed intent</small></div><span class="arr">&rarr;</span><div class="node hub"><b>decision core</b><small>deterministic<br>scoped view + goals</small></div><span class="arr">&rarr;</span><div class="col"><div class="node soft"><b>world effect via Kernel</b><small>e.g. reveal blocker</small></div><div class="node soft"><b>reply in voice</b><small>@ now + delay</small></div></div></div></div>
 
-> **Example:** agent asks *"is payments ready for launch?"* → parser → intent `ask_status(payments)` → Priya's decision core fires her **reveal**: `blocker.psp_cert.surfaced = true` (no agent verb can set it) **+** a voiced reply — *"Not yet — the PSP cert clears Thursday."* — delivered at `now + delay`.
+> **Example:** agent asks *"is payments ready for launch?"* → parser → intent `ask_status(payments)` → Priya's decision core fires her **reveal**: `blocker.psp_cert.surfaced = true` (no agent verb can set it) **+** a voiced reply: *"Not yet, the PSP cert clears Thursday."*, delivered at `now + delay`.
 
 ---
 
-## Scenario Loader & Seeding Engine — everything is data
+## Seeding Engine & Scenario Loader: everything is data
 
-- **Loader** consumes a **frozen instance unchanged** (`seed.json · personas.overlay.json · timeline.json · eval.json + manifest`) — no code per scenario, no generation at load.
 - **Seeding Engine (build-time only)** turns a template + seed into that instance:
   `sample` → `bind` → `assemble` → **`project-eval`** (co-generate the grader from the *same* resolved facts, so world & eval can't drift) → **`gate + freeze`**.
-- **Content-addressed:** `(template_id, seed, substrate_hash, generator_version)` → byte-identical instance. Loader **re-hashes and refuses to run on `dataset_version` mismatch** — a run can never silently drift from the data it claims.
-- **This is how it scales to many scenarios** without prompt-spaghetti: archetype = one declarative template; instances = a seed. No LLM anywhere in generate→freeze.
+  - **Content-addressed:** `(template_id, seed, substrate_hash, generator_version)` → byte-identical instance. Loader **re-hashes and refuses to run on `dataset_version` mismatch**: a run can never silently drift from the data it claims.
+  - **This is how it scales to many scenarios** without prompt-spaghetti: archetype = one declarative template; instances = a seed. No LLM anywhere in generate→freeze.
+- **Loader** consumes a **frozen instance unchanged** (`seed.json · personas.overlay.json · timeline.json · eval.json + manifest`): no code per scenario, no generation at load.
 
-> A **frozen instance** *is* the whole scenario as data — load it and the world is live:
+> A **frozen instance** *is* the whole scenario as data, load it and the world is live:
 > `seed.json` (initial world state) · `personas.overlay.json` (per-NPC goals + delays) ·
 > `timeline.json` (scheduled + gated events) · `eval.json` (ground truth) ·
 > `manifest` (content hashes + provenance).
 
 ---
 
-## Evaluator — deterministic, inspectable, un-gameable
+## Evaluator: deterministic, inspectable, un-gameable
 
-- Grades **structured facts against predicates at checkpoints** — never text-vs-text. Reads the *trajectory* (event log + state reconstructed by projection).
+- Grades **structured facts against predicates at checkpoints**, never text-vs-text. Reads the *trajectory* (event log + state reconstructed by projection).
 - LLM here is an **extractor only** (free text → structured claims); a **deterministic rubric** scores them. **No LLM judge.** Claims are credited only if **consistent with world state** → injection-resistant.
 - **Grade == replayable:** scores the exact bytes we persist; re-runnable offline against a stored trajectory.
 
 | run | behavior | score |
 |---|---|---|
-| **A — real work** | messages the right coworker, records the decision, blocker clears | **1.0** |
-| **B — reward-hacky** | 10 chat messages, hand-sets `status=in_progress`, no decision | **0.0** |
+| **A · real work** | messages the right coworker, records the decision, blocker clears | **1.0** |
+| **B · reward-hacky** | 10 chat messages, hand-sets `status=in_progress`, no decision | **0.0** |
 
-> Activity without real outcomes scores ~0 — that's the whole point.
+> Activity without real outcomes scores ~0. That's the whole point.
 
 ---
 
 ## Trajectory Store & Observability
 
-- Every rollout persisted as a **replay-grade `trajectory.jsonl`** (canonical event log + `caused_by` chain) + snapshots + manifest (`scenario_id`, `seed`, `agent_version`, hashes).
-- **Any-POV views** (agent / NPC / operator / grader) are **reconstructed on demand** by projecting the log — never materialized.
+- Every rollout persisted as a **replay-grade `trajectory.jsonl`**: one record per turn (`verb · args · sim_time · events`) + snapshots + manifest (`scenario_id`, `seed`, `agent_version`, hashes).
+- **Any-POV views** (agent / NPC / operator / grader) are **reconstructed on demand** by projecting the log, never materialized.
 - A **derived, rebuildable DuckDB index** powers cross-run queries.
-- **Operator CLI + Inspector UI** (`localhost:8092/inspector`) — drive, inspect, replay a run; read-only over `runs/`.
+- **Operator CLI + Inspector UI** (`localhost:8092/inspector`): drive, inspect, replay a run; read-only over `runs/`.
+
+One causal chain, verbatim from a run: the `wait` advances the clock and the NPC's deferred reply fires:
+
+```
+{ "turn":1, "sim_time":0,   "verb":"send_message", "events":["agent->send_message"],  "args":{"to":"org.be_b2","body":"PSP ready Friday?"} }
+{ "turn":2, "sim_time":120, "verb":"wait",         "events":["org.be_b2->npc_reply"], "args":{"duration":120} }
+```
 
 ---
 
 ## Rollout trajectory examples
 
-Every run is fully inspectable — score breakdown, event timeline, and the cohort distribution.
+Every run is fully inspectable: score breakdown, event timeline, and the cohort distribution.
 
 <div class="shots"><figure><img src="score-inspector.png" alt="score breakdown"><figcaption>score</figcaption></figure><figure><img src="traj-timeline.png" alt="trajectory timeline"><figcaption>trajectory timeline</figcaption></figure><figure><img src="rollout-distro.png" alt="rollout distribution"><figcaption>distribution</figcaption></figure></div><p class="inspector-link">explore any run live &rarr; <a href="http://127.0.0.1:8092/inspector">127.0.0.1:8092/inspector</a></p>
+
+---
+
+## Challenges
+
+- **Growing breadth without regressions.**
+  - New PM cases and wider world coverage can't silently break existing scenarios or their graders.
+- **Keeping eval verifiers correct.**
+  - As cases multiply, ground-truth predicates must stay faithful, never drifting into **verbatim string-matching** or **misreading what "improved" means**: provably right per case, resistant to both false credit and missed credit.
+
+## Future improvements
+
+- **NPC agency approaching the agent's.**
+  - Coworkers today mostly react; giving the NPC engine much of the **same action surface the agent has** (initiating work, using the same tools, driving their own threads) sharply raises realism. A substantial, independent build.
+- **More drivers of world state.**
+  - Bring the reserved partitions online (`cust · fin · seas`: customers, revenue, seasonality) so **business dynamics move the world**, not just the people in it. Needs deeper data and explicit assumptions first.
     </textarea>
   </section>
 </div></div>
