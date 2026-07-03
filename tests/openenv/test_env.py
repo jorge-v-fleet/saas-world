@@ -105,3 +105,55 @@ def test_http_roundtrip_parses_stepresult() -> None:
     state = State.from_dict(client.get("/state").json())
     assert state.scenario_id == "checkout-not-ready" and state.step_count > 0
     assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_inspector_is_mounted_on_the_env_server(tmp_path: Any, monkeypatch: Any) -> None:
+    """The unified server also hosts the trajectory inspector (SPA + read-only runs API)."""
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("SAASWORLD_RUNS_DIR", str(tmp_path))  # empty runs dir -> zero runs
+    client = TestClient(create_env_app())
+
+    spa = client.get("/inspector")
+    assert spa.status_code == 200 and "<title>" in spa.text
+    runs = client.get("/inspector/api/runs").json()
+    assert runs["count"] == 0 and runs["runs"] == []
+    # env contract still lives on the same app
+    assert client.get("/health").json() == {"status": "ok"}
+
+
+def test_inspector_detail_inlines_llm_transcript(tmp_path: Any, monkeypatch: Any) -> None:
+    """The run detail carries the LLM transcript (messages.json) inline; null when absent."""
+    import json
+
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("SAASWORLD_RUNS_DIR", str(tmp_path))
+    client = TestClient(create_env_app())
+
+    with_msgs = tmp_path / "agent-demo"
+    with_msgs.mkdir()
+    (with_msgs / "manifest.json").write_text(json.dumps({"kind": "agent", "actions": 1}))
+    (with_msgs / "trajectory.jsonl").write_text(
+        json.dumps({"turn": 1, "verb": "send_message", "args": {"to": "org.cto"}}) + "\n"
+    )
+    (with_msgs / "messages.json").write_text(json.dumps([
+        {"role": "user", "content": "start"},
+        {"role": "assistant", "content": [
+            {"type": "text", "text": "ok"},
+            {"type": "tool_use", "id": "t1", "name": "send_message", "input": {"to": "org.cto"}},
+        ]},
+        {"role": "user", "content": [
+            {"type": "tool_result", "tool_use_id": "t1", "content": "{}"},
+        ]},
+    ]))
+
+    detail = client.get("/inspector/api/runs/agent-demo").json()
+    assert detail["has_messages"] is True
+    assert isinstance(detail["messages"], list) and len(detail["messages"]) == 3
+
+    no_msgs = tmp_path / "agent-bare"
+    no_msgs.mkdir()
+    (no_msgs / "manifest.json").write_text(json.dumps({"kind": "agent", "actions": 0}))
+    bare = client.get("/inspector/api/runs/agent-bare").json()
+    assert bare["has_messages"] is False and bare["messages"] is None

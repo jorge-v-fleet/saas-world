@@ -159,6 +159,7 @@ def get_run(run_id: str) -> JSONResponse:
     manifest = _read_json(d / "manifest.json")
     rows = _read_jsonl(d / "trajectory.jsonl")
     score = _normalize_score(_read_json(d / "score.json"))
+    messages = _read_json(d / "messages.json")  # LLM transcript; ~100KB, inline for local inspector
     return JSONResponse({
         "run_id": d.relative_to(base).as_posix(),
         "kind": _sniff_kind(manifest, rows[0] if rows else None),
@@ -166,4 +167,5 @@ def get_run(run_id: str) -> JSONResponse:
         "trajectory": [_normalize_row(i, r) for i, r in enumerate(rows)],
         "score": score,
         "has_messages": (d / "messages.json").exists(),
+        "messages": messages,
     })

@@ -135,6 +135,57 @@
         </table>`;
     };
 
+    // ── conversation (LLM transcript) ───────────────────────────────────────────
+    const Collapsible = ({ label, children, defaultOpen = false }) => {
+      const [open, setOpen] = useState(defaultOpen);
+      return html`
+        <div>
+          <button onClick=${() => setOpen(!open)}
+            className="flex items-center gap-1 text-[11px] text-zinc-500 hover:text-zinc-300">
+            <span>${open ? "▾" : "▸"}</span>${label}</button>
+          ${open ? children : null}
+        </div>`;
+    };
+
+    const preCls = "overflow-x-auto rounded-md bg-zinc-950/60 px-3 py-2 text-[12px] leading-relaxed";
+    const asJson = (v) => typeof v === "string" ? v : JSON.stringify(v, null, 2);
+
+    // Render one message's content: a plain string, or an array of typed blocks.
+    const MsgBlocks = ({ content }) => {
+      if (typeof content === "string")
+        return html`<div className="whitespace-pre-wrap text-[13px] leading-relaxed text-zinc-200">${content}</div>`;
+      if (!Array.isArray(content)) return null;
+      return html`<div className="flex flex-col gap-2">${content.map((b, i) => {
+        if (b.type === "text")
+          return html`<div key=${i} className="whitespace-pre-wrap text-[13px] leading-relaxed text-zinc-200">${b.text}</div>`;
+        if (b.type === "tool_use")
+          return html`<div key=${i} className="flex flex-col gap-1">
+            <div><${Badge} tone="agent">${b.name}</${Badge}></div>
+            <pre className=${preCls + " text-zinc-300"}>${asJson(b.input)}</pre>
+          </div>`;
+        if (b.type === "tool_result")
+          return html`<${Collapsible} key=${i} label=${"tool_result" + (b.tool_use_id ? " · " + b.tool_use_id : "")}>
+            <pre className=${preCls + " mt-1 text-zinc-400"}>${asJson(b.content)}</pre>
+          </${Collapsible}>`;
+        return null;  // unknown block type: skip gracefully
+      })}</div>`;
+    };
+
+    const Conversation = ({ messages }) => {
+      if (!Array.isArray(messages) || !messages.length)
+        return html`<div className="text-sm text-muted">no transcript</div>`;
+      return html`<div className="flex flex-col gap-3">
+        ${messages.map((m, i) => {
+          const isAgent = m.role === "assistant";
+          return html`<div key=${i}
+            className=${"rounded-lg border px-3 py-2 " + (isAgent ? "border-indigo-500/30 bg-indigo-500/5" : "border-border bg-zinc-950/40")}>
+            <div className=${"mb-1 text-[11px] font-medium uppercase tracking-wide " + (isAgent ? "text-indigo-300" : "text-zinc-500")}>${m.role}</div>
+            <${MsgBlocks} content=${m.content} />
+          </div>`;
+        })}
+      </div>`;
+    };
+
     // ── main run view ─────────────────────────────────────────────────────────
     const Tabs = ({ tabs, active, onTab }) => html`
       <div className="flex gap-1 border-b border-border">
@@ -165,7 +216,7 @@
           <${Tabs} tabs=${tabs} active=${tab} onTab=${setTab} />
           ${tab === "trajectory" ? html`<${Card} className="p-4"><${TrajectoryTable} rows=${run.trajectory} /></${Card}>` : null}
           ${tab === "score" ? html`<${Card} className="p-4"><${ScorePanel} score=${run.score} /></${Card}>` : null}
-          ${tab === "conversation" ? html`<${Card} className="p-4 text-sm text-muted">conversation view — coming next</${Card}>` : null}
+          ${tab === "conversation" ? html`<${Card} className="p-4"><${Conversation} messages=${run.messages} /></${Card}>` : null}
         </div>`;
     };
 

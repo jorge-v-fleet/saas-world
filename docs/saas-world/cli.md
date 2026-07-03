@@ -49,9 +49,12 @@ saasworld traj query  --reward-hack                 # high activity, ~0 real out
 
 ## Persistent session
 
-For state living in one process across commands, start the service and pass `--backend http`:
+For state living in one process across commands, start the raw JSON-RPC Tool API and pass
+`--backend http`. The standalone `saasworld-serve` entrypoint is **deprecated** (the OpenEnv server
+is the single service now), so start the RPC app explicitly when you need this transport:
 
 ```
-python -m saasworld.serve                           # JSON-RPC on 127.0.0.1:8080
+python -c "import uvicorn; from saasworld.api.app import create_app; \
+  uvicorn.run(create_app(), host='127.0.0.1', port=8080)"   # JSON-RPC on 127.0.0.1:8080
 saasworld load data/scenarios/checkout-not-ready --backend http
 ```

@@ -10,7 +10,7 @@ the deterministic evaluator's final score (full breakdown in `observation.metada
 identical to `run-eval`).
 
 ```
-# server (separate process, localhost:8092 — off the Tool API's 8080)
+# the single running service (localhost:8092): episode API + trajectory inspector UI
 saasworld-env-serve          # or: python -m saasworld.openenv.serve
 ```
 
@@ -33,6 +33,19 @@ with SaasWorldEnv("http://127.0.0.1:8092") as env:
 `SaasWorldEnvironment` (server-side) is also usable in-process without HTTP; `env.step(...)` returns
 the `SaasWorldObservation` directly. One environment = one session (single writer) — run one process
 per concurrent episode.
+
+## Trajectory inspector
+
+The same server hosts a read-only inspector at `http://127.0.0.1:8092/inspector` — a lightweight UI
+over `runs/`. First view: the **raw trajectory inspector** (per-run action stream, args, events, and
+the evaluator score breakdown). It reads every run kind uniformly.
+
+Runs are produced by two generators, both writing the standard layout the inspector reads
+(`runs/<id>/manifest.json` + `trajectory.jsonl` + `score.json`, via `saasworld.trajectory.actionlog`):
+
+- `scripts/pm_agent_llm.py` — a real LLM PM agent (Claude tool-use) driving an episode → `runs/agent-*`.
+- `scripts/random_rollouts.py` — random-policy rollouts characterising the base reward distribution
+  → `runs/rollouts/*` + a `rollouts-summary.json` aggregate.
 
 ## Action space
 
