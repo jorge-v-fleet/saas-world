@@ -28,6 +28,7 @@ from saasworld.state.store import WorldState
 from .types import SaasWorldAction, SaasWorldObservation, State
 
 _CATALOG = Path(__file__).resolve().parents[3] / "data" / "actions.json"
+WEEK_MINUTES = 7 * 24 * 60  # one simulated week; the unit of the optional max-weeks budget
 
 
 def _at_minutes(at: Any) -> int:
@@ -46,6 +47,7 @@ class SaasWorldEnvironment:
         self._opening: dict[str, Any] = {}
         self._ground_truth: dict[str, Any] = {}
         self._horizon = 0
+        self._deadline: int | None = None  # hard time budget (max-weeks); None = only the horizon
         self._scored = False
         self._state = State()
 
@@ -57,9 +59,15 @@ class SaasWorldEnvironment:
         seed: int | None = None,
         agent_version: str = "baseline",
         episode_id: str | None = None,
+        max_weeks: float | None = None,
         **_: Any,
     ) -> SaasWorldObservation:
-        """Seed a fresh world from `scenario` (a `data/scenarios/` name or an instance path)."""
+        """Seed a fresh world from `scenario` (a `data/scenarios/` name or an instance path).
+
+        `max_weeks` sets an optional hard time budget: if the sim clock crosses it *before* the
+        scenario's own horizon, the episode force-closes as a **timeout failure** (reward 0.0),
+        distinct from a run that reached the week's end and was graded on its merits.
+        """
         world = WorldState()
         kernel = Kernel(world)
         loaded = scenario_load(scenario, kernel)
@@ -73,6 +81,7 @@ class SaasWorldEnvironment:
             (_at_minutes(cp["at"]) for cp in self._ground_truth.get("checkpoints", [])),
             default=0,
         )
+        self._deadline = round(max_weeks * WEEK_MINUTES) if max_weeks is not None else None
         self._scored = False
         self._opening = {"seq": 0, "sim_time": kernel.now(), "state": world.snapshot()}
         self._state = State(
@@ -84,7 +93,7 @@ class SaasWorldEnvironment:
             done=False, reward=None, sim_time=kernel.now(), state=world.snapshot(),
             events=[], ack=None,
             metadata={"scenario_id": loaded.scenario_id, "horizon": self._horizon,
-                      "dataset_version": loaded.dataset_version},
+                      "deadline": self._deadline, "dataset_version": loaded.dataset_version},
         )
 
     def step(self, action: SaasWorldAction) -> SaasWorldObservation:
@@ -109,10 +118,15 @@ class SaasWorldEnvironment:
         done = self._done(now)
         reward: float | None = None
         meta: dict[str, Any] = {"step": self._state.step_count}
-        if done and not self._scored:  # cross the horizon once -> the deterministic final score
+        if done and not self._scored:  # cross the terminal once -> the deterministic final score
             breakdown = score(self._trajectory(), self._ground_truth)
-            reward = breakdown.final
-            meta["score"] = asdict(breakdown)
+            meta["score"] = asdict(breakdown)  # keep the breakdown inspectable either way
+            if self._timed_out(now):
+                # Ran out of the allotted budget before the week could be graded on its merits:
+                # a failure, regardless of any partial credit the breakdown shows.
+                reward, meta["outcome"], meta["terminated"] = 0.0, "timeout", "max_weeks"
+            else:
+                reward, meta["outcome"] = breakdown.final, "completed"
             self._scored = True
         return SaasWorldObservation(
             done=done, reward=reward, sim_time=now, state=world.snapshot(),
@@ -129,10 +143,22 @@ class SaasWorldEnvironment:
     # ---- internals ---------------------------------------------------------------------------
 
     def _done(self, now: int) -> bool:
-        return self._horizon > 0 and now >= self._horizon
+        if self._horizon > 0 and now >= self._horizon:
+            return True
+        return self._deadline is not None and now >= self._deadline
 
-    def _trajectory(self) -> dict[str, Any]:
-        """Opening snapshot + every applied event — the shape the Evaluator scores."""
+    def _timed_out(self, now: int) -> bool:
+        """True when the max-weeks budget — not the scenario's own horizon — is what closed the
+        episode: the deadline is set, the clock is past it, and it bit before the natural end.
+        A deadline at or beyond the horizon is slack, so reaching the end still grades normally."""
+        if self._deadline is None or now < self._deadline:
+            return False
+        return self._horizon <= 0 or self._deadline < self._horizon
+
+    def canonical_trajectory(self) -> dict[str, Any]:
+        """Opening snapshot + every applied event (deltas under ``payload['deltas']``).
+
+        The canonical kernel event log the Evaluator scores and replay tools reconstruct from."""
         return {
             "snapshots": [self._opening],
             "events": [
@@ -141,3 +167,7 @@ class SaasWorldEnvironment:
                 for e, d in self._events
             ],
         }
+
+    def _trajectory(self) -> dict[str, Any]:
+        """Alias kept for scoring call sites — the canonical trajectory, unchanged in shape."""
+        return self.canonical_trajectory()

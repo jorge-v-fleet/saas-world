@@ -81,6 +81,28 @@ def test_busy_run_scores_low() -> None:
     env.step(SaasWorldAction("send_message", {"to": "chan.checkout", "body": "great work team"}))
     final = env.step(SaasWorldAction("wait", {"duration": 7000}))
     assert final.done is True and final.reward == 0.0
+    assert final.metadata["outcome"] == "completed"  # reached the week's end, did nothing useful
+
+
+def test_max_weeks_timeout_is_a_failure() -> None:
+    """A budget shorter than the scenario's horizon force-closes as a timeout failure: reward 0.0
+    and outcome='timeout', with the deterministic breakdown still attached for inspection."""
+    env = SaasWorldEnvironment()
+    reset = env.reset("checkout-not-ready", max_weeks=0.5)  # deadline 5040 < horizon 6780
+    assert reset.metadata["deadline"] == 5040
+    final = env.step(SaasWorldAction("wait", {"duration": 6000}))  # cross the deadline, not horizon
+    assert final.done is True and final.reward == 0.0
+    assert final.metadata["outcome"] == "timeout" and final.metadata["terminated"] == "max_weeks"
+    assert "score" in final.metadata  # breakdown kept for inspection despite the floored reward
+
+
+def test_slack_max_weeks_grades_normally() -> None:
+    """A budget beyond the horizon is slack — the episode still completes and grades on merit."""
+    env = SaasWorldEnvironment()
+    env.reset("checkout-not-ready", max_weeks=2)  # deadline 20160 >> horizon
+    final = _drive(env.step)
+    assert final.done is True and final.reward is not None and final.reward > 0.8
+    assert final.metadata["outcome"] == "completed"
 
 
 # ---- HTTP client/server round-trip ----------------------------------------------------------

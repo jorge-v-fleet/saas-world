@@ -206,6 +206,7 @@ class Rollout:
     forced_terminal: bool
     trajectory: list[dict[str, Any]] = field(default_factory=list)
     score: dict[str, Any] | None = None
+    canonical: dict[str, Any] | None = None  # canonical kernel event log (opening + deltas)
 
 
 def run_episode(
@@ -242,7 +243,7 @@ def run_episode(
         episode=episode, archetype=archetype, seed=scenario_seed, run_id=env.state.run_id,
         steps=len(trace), errors=errors, sim_time=obs.sim_time, horizon=horizon,
         reward=obs.reward, forced_terminal=bool(forced), trajectory=trace,
-        score=obs.metadata.get("score"),
+        score=obs.metadata.get("score"), canonical=env.canonical_trajectory(),
     )
 
 
@@ -259,7 +260,8 @@ def _write_run_dir(out: Path, roll: Rollout) -> Path:
         "horizon": roll.horizon, "sim_time": roll.sim_time,
         "forced_terminal": roll.forced_terminal, "final_reward": roll.reward,
     }
-    write_run(run_dir, manifest=manifest, rows=roll.trajectory, score=roll.score)
+    write_run(run_dir, manifest=manifest, rows=roll.trajectory, score=roll.score,
+              canonical=roll.canonical)
     return run_dir
 
 

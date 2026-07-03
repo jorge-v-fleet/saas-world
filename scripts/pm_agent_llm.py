@@ -222,13 +222,15 @@ def _to_dicts(content: list[Any]) -> list[dict[str, Any]]:
 # ── the episode loop ─────────────────────────────────────────────────────────────────────────
 
 def run_episode(env: SaasWorldEnv, brain: Any, scenario: str, out_dir: Path,
-                max_turns: int = 24) -> dict[str, Any]:
+                max_turns: int = 24, max_weeks: float | None = None) -> dict[str, Any]:
     tools = build_tools()
     system = build_system_prompt()
 
-    reset = env.reset(scenario=scenario)
+    reset = env.reset(scenario=scenario, max_weeks=max_weeks)
     horizon = int(reset.observation.metadata.get("horizon", 0))
-    print(f"● reset  scenario={scenario}  horizon={horizon}  sim_time={reset.observation.sim_time}")
+    deadline = reset.observation.metadata.get("deadline")
+    print(f"● reset  scenario={scenario}  horizon={horizon}  deadline={deadline}  "
+          f"sim_time={reset.observation.sim_time}")
 
     first = ("You are starting your first week. Current point of view:\n"
              f"{json.dumps(project_view(reset.observation.state), default=str)}\n\n"
@@ -238,6 +240,7 @@ def run_episode(env: SaasWorldEnv, brain: Any, scenario: str, out_dir: Path,
     traj: list[dict[str, Any]] = []
     final = reset
     turn = 0
+    exit_reason = "max_turns"  # default: fell out of the turn budget without wrapping up
     while turn < max_turns:
         turn += 1
         resp = brain.respond(system, messages, tools)
@@ -246,6 +249,7 @@ def run_episode(env: SaasWorldEnv, brain: Any, scenario: str, out_dir: Path,
         tool_uses = [b for b in content if b["type"] == "tool_use"]
         if not tool_uses:
             print(f"  turn {turn}: model returned no tool call — ending")
+            exit_reason = "no_action"
             break
 
         results, finished = [], False
@@ -267,29 +271,39 @@ def run_episode(env: SaasWorldEnv, brain: Any, scenario: str, out_dir: Path,
                             "content": _tool_result(o, horizon)})
         messages.append({"role": "user", "content": results})
         if finished or final.observation.done:
+            exit_reason = "finish" if finished else "env_done"
             break
 
-    if not final.observation.done:  # close the week so the episode gets a terminal grade
-        print("  (auto-advancing to end-of-week for the terminal score)")
-        final = env.step(SaasWorldAction("wait", {"duration": max(1, horizon + 60)}))
+    if not final.observation.done:  # close the episode so it gets a terminal grade
+        print("  (force-closing for the terminal score — agent did not wrap up in budget)")
+        close_by = max(horizon, int(deadline or 0)) + 60  # cross whichever terminal binds
+        final = env.step(SaasWorldAction("wait", {"duration": max(1, close_by)}))
         traj.append(step_row(turn + 1, "wait", {"auto_close": True}, final.observation))
 
-    return _persist(out_dir, scenario, brain, horizon, messages, traj, final)
+    canonical = env.trajectory()  # canonical kernel event log for replay/timeline tools
+    return _persist(out_dir, scenario, brain, horizon, messages, traj, final, exit_reason,
+                    canonical)
 
 
 def _persist(out_dir: Path, scenario: str, brain: Any, horizon: int,
              messages: list[dict[str, Any]], traj: list[dict[str, Any]],
-             final: Any) -> dict[str, Any]:
+             final: Any, exit_reason: str, canonical: dict[str, Any] | None = None
+             ) -> dict[str, Any]:
     o = final.observation
+    outcome = o.metadata.get("outcome")  # env verdict: "completed" | "timeout"
     manifest = {
         "kind": "agent", "scenario": scenario, "brain": type(brain).__name__,
         "model": getattr(brain, "model", None), "actions": len(traj),
         "horizon": horizon, "sim_time": o.sim_time, "final_reward": final.reward,
+        "outcome": outcome, "exit_reason": exit_reason,
     }
     write_run(out_dir, manifest=manifest, rows=traj,
-              score=o.metadata.get("score"), messages=messages)
-    print(f"\n● done  reward={final.reward}  actions={len(traj)}  -> {out_dir}/")
-    return {"reward": final.reward, "actions": len(traj), "out_dir": str(out_dir)}
+              score=o.metadata.get("score"), messages=messages, canonical=canonical)
+    verdict = "TIMEOUT (failure)" if outcome == "timeout" else outcome or "?"
+    print(f"\n● done  reward={final.reward}  outcome={verdict}  exit={exit_reason}  "
+          f"actions={len(traj)}  -> {out_dir}/")
+    return {"reward": final.reward, "outcome": outcome, "actions": len(traj),
+            "out_dir": str(out_dir)}
 
 
 # ── CLI ──────────────────────────────────────────────────────────────────────────────────────
@@ -300,6 +314,9 @@ def main() -> None:
     p.add_argument("--scenario", default="checkout-not-ready")
     p.add_argument("--model", default="claude-sonnet-5")
     p.add_argument("--max-turns", type=int, default=24)
+    p.add_argument("--max-weeks", type=float, default=None,
+                   help="hard time budget in simulated weeks; exceeding it force-closes the "
+                        "episode as a timeout failure (reward 0.0)")
     p.add_argument("--out", default=None, help="output dir (default runs/agent-<scenario>-<ts>)")
     p.add_argument("--print-tools", action="store_true", help="print derived tools + prompt, exit")
     p.add_argument("--self-test", action="store_true", help="drive a fixed policy offline (no key)")
@@ -316,7 +333,7 @@ def main() -> None:
     if not env.health():
         sys.exit(f"env server not reachable at {args.url} — start it with `saasworld-env-serve`")
     brain: Any = ScriptedBrain() if args.self_test else ClaudeBrain(args.model)
-    run_episode(env, brain, args.scenario, out, args.max_turns)
+    run_episode(env, brain, args.scenario, out, args.max_turns, args.max_weeks)
 
 
 if __name__ == "__main__":

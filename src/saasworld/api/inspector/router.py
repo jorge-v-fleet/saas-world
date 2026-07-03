@@ -15,6 +15,7 @@ normalized to one shape so the UI is producer-agnostic:
 from __future__ import annotations
 
 import json
+import math
 import os
 from pathlib import Path
 from typing import Any
@@ -151,6 +152,128 @@ def list_runs() -> JSONResponse:
     return JSONResponse({"runs_dir": str(base), "count": len(runs), "runs": runs})
 
 
+# ── cohort (cross-run distribution) ──────────────────────────────────────────
+# Verbs that only read world state; anything else that ran without error mutated it. Used as the
+# reward-hack "real delta" proxy when a run has no canonical events.jsonl.
+_READ_VERBS = {
+    "read_inbox", "read_channel", "get_calendar", "get_tasks", "read_doc",
+    "get_people", "get_transcript", "wait", "attend_meeting",
+}
+_MESSAGE_VERBS = {"send_message", "send_email"}
+
+
+def _run_folder(run_id: str) -> str:
+    """Top-level grouping key — mirrors the UI's runFolder() (last '/' splits folder/leaf)."""
+    return run_id[: run_id.rfind("/")] if "/" in run_id else "(root)"
+
+
+def _stats(vals: list[float]) -> dict[str, Any]:
+    n = len(vals)
+    if not n:
+        return {"mean": None, "min": None, "max": None, "stddev": 0.0,
+                "ci_low": None, "ci_high": None}
+    mean = sum(vals) / n
+    stddev = math.sqrt(sum((v - mean) ** 2 for v in vals) / (n - 1)) if n > 1 else 0.0
+    half = 1.96 * stddev / math.sqrt(n) if n > 1 else 0.0
+    return {"mean": mean, "min": min(vals), "max": max(vals), "stddev": stddev,
+            "ci_low": mean - half, "ci_high": mean + half}
+
+
+def _reward_hist(vals: list[float], bins: int = 10) -> list[int]:
+    hist = [0] * bins
+    for v in vals:
+        idx = min(bins - 1, max(0, int(v * bins)))  # clamp [0,1] into fixed bins
+        hist[idx] += 1
+    return hist
+
+
+def _n_messages(rows: list[dict[str, Any]]) -> int:
+    return sum(1 for r in rows if r.get("verb") in _MESSAGE_VERBS)
+
+
+def _n_real_deltas(d: Path, rows: list[dict[str, Any]]) -> int:
+    """Real state changes: events.jsonl rows with a non-empty delta; else mutate-ish, error-free
+    actions (a run that only reads/waits or errors out changed nothing)."""
+    events = _read_jsonl(d / "events.jsonl") if (d / "events.jsonl").exists() else None
+    if events is not None:
+        return sum(1 for e in events if e.get("delta"))
+    return sum(1 for r in rows
+               if r.get("verb") not in _READ_VERBS and not r.get("error"))
+
+
+@router.get("/api/cohort")
+def get_cohort(folder: str) -> JSONResponse:
+    base = _runs_dir()
+    empty = {"folder": folder, "n": 0, "rewards": [], "reward_hist": [0] * 10,
+             "per_archetype": [], "checkpoints": [], "scatter": [],
+             "mean": None, "min": None, "max": None, "stddev": 0.0,
+             "ci_low": None, "ci_high": None}
+    if not base.is_dir():
+        return JSONResponse(empty)
+
+    dirs = [d for d in _find_run_dirs(base)
+            if _run_folder(d.relative_to(base).as_posix()) == folder]
+    if not dirs:
+        return JSONResponse(empty)
+
+    rewards: list[float] = []
+    by_arch: dict[str, list[float]] = {}
+    pred_n: dict[str, int] = {}
+    pred_pass: dict[str, int] = {}
+    heatmap: list[dict[str, Any]] = []
+    scatter: list[dict[str, Any]] = []
+
+    for d in dirs:
+        run_id = d.relative_to(base).as_posix()
+        manifest = _read_json(d / "manifest.json") or {}
+        rows = _read_jsonl(d / "trajectory.jsonl")
+        sc_raw = _read_json(d / "score.json") if (d / "score.json").exists() else None
+        score = _normalize_score(sc_raw)
+        reward = _final_reward(manifest, score)
+
+        if isinstance(reward, (int, float)):
+            rewards.append(float(reward))
+            arch = manifest.get("archetype") or manifest.get("scenario") or run_id
+            by_arch.setdefault(arch, []).append(float(reward))
+
+        preds = [p for cp in (score or {}).get("checkpoints", []) for p in cp.get("predicates", [])]
+        results: dict[str, int] = {}
+        for p in preds:
+            pid = p.get("id")
+            if pid is None:
+                continue
+            ok = 1 if p.get("status") == "pass" else 0
+            pred_n[pid] = pred_n.get(pid, 0) + 1
+            pred_pass[pid] = pred_pass.get(pid, 0) + ok
+            results[pid] = ok
+        heatmap.append({"run_id": run_id, "results": results})
+
+        scatter.append({
+            "run_id": run_id,
+            "n_messages": _n_messages(rows),
+            "n_real_deltas": _n_real_deltas(d, rows),
+            "reward": reward if isinstance(reward, (int, float)) else None,
+        })
+
+    per_archetype = []
+    for arch in sorted(by_arch):
+        s = _stats(by_arch[arch])
+        per_archetype.append({"archetype": arch, "n": len(by_arch[arch]),
+                              "reward_mean": s["mean"], "reward_ci_low": s["ci_low"],
+                              "reward_ci_high": s["ci_high"]})
+    checkpoints = [{"id": pid, "n": pred_n[pid], "pass": pred_pass[pid],
+                    "pass_rate": pred_pass[pid] / pred_n[pid]}
+                   for pid in sorted(pred_n)]
+
+    return JSONResponse({
+        "folder": folder, "n": len(dirs), "rewards": rewards,
+        "reward_hist": _reward_hist(rewards), **_stats(rewards),
+        "per_archetype": per_archetype,
+        "checkpoints": {"per_id": checkpoints, "heatmap": heatmap},
+        "scatter": scatter,
+    })
+
+
 @router.get("/api/runs/{run_id:path}")
 def get_run(run_id: str) -> JSONResponse:
     base = _runs_dir().resolve()
@@ -161,12 +284,26 @@ def get_run(run_id: str) -> JSONResponse:
     rows = _read_jsonl(d / "trajectory.jsonl")
     score = _normalize_score(_read_json(d / "score.json"))
     messages = _read_json(d / "messages.json")  # LLM transcript; ~100KB, inline for local inspector
+    kind = _sniff_kind(manifest, rows[0] if rows else None)
+    # Canonical kernel event log for the replay timeline. Generators persist events.jsonl; cli runs
+    # have their canonical envelopes directly in trajectory.jsonl. Opening state seeds delta-fold.
+    events_file = d / "events.jsonl"
+    if events_file.exists():
+        events = _read_jsonl(events_file)
+    elif kind == "cli":
+        events = rows
+    else:
+        events = []
+    opening = _read_json(d / "snapshots" / "0.json")
     return JSONResponse({
         "run_id": d.relative_to(base).as_posix(),
-        "kind": _sniff_kind(manifest, rows[0] if rows else None),
+        "kind": kind,
         "manifest": manifest,
         "trajectory": [_normalize_row(i, r) for i, r in enumerate(rows)],
         "score": score,
         "has_messages": (d / "messages.json").exists(),
         "messages": messages,
+        "events": events,
+        "opening": opening,
+        "has_events": bool(events),
     })

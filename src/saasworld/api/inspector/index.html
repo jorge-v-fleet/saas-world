@@ -251,33 +251,489 @@
         </div>`;
     };
 
+    // ── replay timeline (canonical kernel events, per-step delta + causal nav) ───
+    // actor→color: agent vs system vs npc/coworker (org.*) must be distinguishable.
+    const actorText = (a) => a === "agent" ? "text-indigo-300" : a === "system" ? "text-zinc-400" : "text-emerald-300";
+    const actorDot = (a) => a === "agent" ? "bg-indigo-400" : a === "system" ? "bg-zinc-500" : "bg-emerald-400";
+    const isScalar = (v) => v == null || typeof v !== "object";
+    const evKey = (e, i) => e.seq != null ? e.seq : i;
+
+    // Best-effort "state at step": fold deltas (set at dotted path / append to list) from opening.
+    const getPath = (o, path) => path.split(".").reduce((x, k) => (x == null ? x : x[k]), o);
+    const setPath = (o, path, v) => {
+      const ks = path.split("."); let cur = o;
+      for (let i = 0; i < ks.length - 1; i++) {
+        if (cur[ks[i]] == null || typeof cur[ks[i]] !== "object") cur[ks[i]] = {};
+        cur = cur[ks[i]];
+      }
+      cur[ks[ks.length - 1]] = v;
+    };
+    const foldState = (opening, events, uptoSeq) => {
+      if (!opening || !opening.state) return null;
+      const state = JSON.parse(JSON.stringify(opening.state));
+      events.forEach((e, i) => {
+        if (evKey(e, i) > uptoSeq) return;
+        for (const d of (e.delta || [])) {
+          if (d.op === "set") setPath(state, d.path, d.value);
+          else if (d.op === "append") { const a = getPath(state, d.path); if (Array.isArray(a)) a.push(d.value); }
+        }
+      });
+      return state;
+    };
+
+    const DeltaPanel = ({ delta }) => {
+      if (!delta || !delta.length) return html`<div className="text-sm text-muted">no state change</div>`;
+      return html`<div className="flex flex-col gap-2">
+        ${delta.map((d, i) => html`<div key=${i} className="rounded-md border border-border bg-zinc-950/40 px-3 py-2">
+          <div className="flex items-center gap-2 text-[13px]">
+            <${Badge} tone=${d.op === "append" ? "pass" : "agent"}>${d.op}</${Badge}>
+            <span className="font-mono text-zinc-300">${d.path}</span>
+          </div>
+          ${isScalar(d.value)
+            ? html`<div className="mt-1 font-mono text-[12px] text-zinc-400">${String(d.value)}</div>`
+            : html`<pre className=${preCls + " mt-1 text-zinc-300"}>${JSON.stringify(d.value, null, 2)}</pre>`}
+        </div>`)}
+      </div>`;
+    };
+
+    const Timeline = ({ run }) => {
+      const events = (run && run.events) || [];
+      const ordered = [...events].sort((a, b) =>
+        (a.seq != null && b.seq != null) ? a.seq - b.seq : events.indexOf(a) - events.indexOf(b));
+      const [sel, setSel] = useState(null);
+      useEffect(() => setSel(ordered.length ? evKey(ordered[0], 0) : null), [run && run.run_id]);
+      if (!run) return html`<div className="grid h-full place-items-center text-muted">select a run</div>`;
+      if (!run.has_events) return html`<div className="grid h-full place-items-center px-8 text-center text-sm text-muted">
+        no canonical event log for this run — regenerate it to enable the timeline.</div>`;
+
+      const bySeq = {};
+      ordered.forEach((e, i) => { bySeq[evKey(e, i)] = e; });
+      const cur = bySeq[sel] ?? ordered[0];
+      const curSeq = cur ? (cur.seq != null ? cur.seq : evKey(cur, ordered.indexOf(cur))) : null;
+      const effects = ordered.filter((e) => e.caused_by != null && e.caused_by === curSeq);
+      const cause = cur && cur.caused_by != null ? bySeq[cur.caused_by] : null;
+      const stateAt = foldState(run.opening, ordered, curSeq);
+
+      return html`<div className="grid h-full min-h-0 grid-cols-[minmax(0,340px)_1fr] gap-4">
+        <${Card} className="flex min-h-0 flex-col overflow-hidden">
+          <div className="border-b border-border px-3 py-2 text-xs font-medium uppercase tracking-wide text-zinc-500">events · ${ordered.length}</div>
+          <div className="min-h-0 flex-1 overflow-y-auto">
+            ${ordered.map((e, i) => {
+              const k = evKey(e, i), on = k === sel;
+              return html`<button key=${k} onClick=${() => setSel(k)}
+                className=${"flex w-full items-center gap-2 border-b border-border/50 px-3 py-2 text-left transition " +
+                  (on ? "bg-accent/10" : "hover:bg-zinc-900/60")}>
+                <span className=${"h-2 w-2 shrink-0 rounded-full " + actorDot(e.actor)}></span>
+                <span className="w-14 shrink-0 tabular-nums text-[11px] text-zinc-500">${e.sim_time ?? ""}</span>
+                <span className=${"w-16 shrink-0 truncate text-[11px] " + actorText(e.actor)} title=${e.actor}>${e.actor}</span>
+                <span className="truncate font-mono text-[12px] text-fg">${e.kind}</span>
+              </button>`;
+            })}
+          </div>
+        </${Card}>
+        <div className="min-h-0 overflow-y-auto pr-1">
+          ${cur ? html`<div className="flex flex-col gap-4">
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="tabular-nums text-xs text-zinc-500">seq ${curSeq} · t=${cur.sim_time ?? "—"}</span>
+              <span className=${"h-2 w-2 rounded-full " + actorDot(cur.actor)}></span>
+              <span className=${"text-xs " + actorText(cur.actor)}>${cur.actor}</span>
+              <span className="font-mono text-sm text-fg">${cur.kind}</span>
+            </div>
+            <${Card} className="p-4">
+              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">what changed</div>
+              <${DeltaPanel} delta=${cur.delta} />
+            </${Card}>
+            <${Card} className="p-4">
+              <div className="mb-2 text-xs font-medium uppercase tracking-wide text-zinc-500">causality</div>
+              ${cause ? html`<button onClick=${() => setSel(cur.caused_by)}
+                className="block text-left text-[13px] text-sky-300 hover:underline">▲ caused by seq ${cur.caused_by} (${cause.kind})</button>`
+                : html`<div className="text-[13px] text-muted">▲ no cause (root event)</div>`}
+              ${effects.length ? html`<div className="mt-2 flex flex-col gap-1">
+                ${effects.map((e, i) => html`<button key=${i} onClick=${() => setSel(evKey(e, ordered.indexOf(e)))}
+                  className="block text-left text-[13px] text-emerald-300 hover:underline">▼ seq ${e.seq} · <span className=${actorText(e.actor)}>${e.actor}</span> ${e.kind}</button>`)}
+              </div>` : html`<div className="mt-2 text-[13px] text-muted">▼ no downstream effects</div>`}
+            </${Card}>
+            ${stateAt ? html`<${Card} className="p-4">
+              <${Collapsible} label="state at this step">
+                <pre className=${preCls + " mt-2 text-zinc-300"}>${JSON.stringify(stateAt, null, 2)}</pre>
+              </${Collapsible}>
+            </${Card}>` : null}
+          </div>` : html`<div className="grid h-full place-items-center text-muted">select an event</div>`}
+        </div>
+      </div>`;
+    };
+
+    // ── placeholder tool views (filled in by later subagents) ────────────────────
+    // Run-kind placeholders receive the same props as RunView: { run } (fetched detail).
+    const ComingSoon = ({ title }) => html`
+      <${Card} className="grid h-full place-items-center p-10">
+        <div className="text-center">
+          <div className="text-sm font-medium text-fg">${title}</div>
+          <div className="mt-1 text-xs text-muted">coming soon</div>
+        </div>
+      </${Card}>`;
+    // ── grader fact-view (score decomposition, "why X & why un-gameable") ─────────
+    // Best-effort parse of an evaluator reason into (path · observed · expected).
+    // Reasons are structured (see eval/predicates.py); anything that doesn't match is shown verbatim.
+    const parseReason = (reason) => {
+      if (typeof reason !== "string" || !reason.trim()) return null;
+      let r = reason.trim(), prefix = "";
+      const anyM = r.match(/^any:\s*(.*)$/s);            // disjunction wrapper → parse the winning/only sub
+      if (anyM) { r = anyM[1].trim(); if (r.startsWith("none")) return null; prefix = "any → "; }
+      let m;
+      if ((m = r.match(/^(.+?) is (.+) != (.+)$/)))      // field_eq fail
+        return { path: prefix + m[1], observed: m[2], expected: m[3] };
+      if ((m = r.match(/^(.+?)=(.+) not in (.+)$/)))     // set_membership fail
+        return { path: prefix + m[1], observed: m[2], expected: "∈ " + m[3] };
+      if ((m = r.match(/^(.+?) matched none$/)))         // existence fail
+        return { path: prefix + m[1], observed: "0 matches", expected: "≥1 match" };
+      if ((m = r.match(/^(.+?) matched (\d+)$/)))        // existence pass
+        return { path: prefix + m[1], observed: m[2] + " match(es)", expected: "≥1 match" };
+      if ((m = r.match(/^(.+?) unchanged \((.+)\)$/)))   // changed fail
+        return { path: prefix + m[1], observed: "unchanged (" + m[2] + ")", expected: "changed vs baseline" };
+      if ((m = r.match(/^(.+?) changed$/)))              // changed pass
+        return { path: prefix + m[1], observed: "changed", expected: "changed vs baseline" };
+      if ((m = r.match(/^(.+?) missing$/)))              // any kind: path absent
+        return { path: prefix + m[1], observed: "missing", expected: "present" };
+      if ((m = r.match(/^(.+?) == (.+)$/)))              // field_eq pass
+        return { path: prefix + m[1], observed: m[2], expected: m[2] };
+      if ((m = r.match(/^(.+?) in (.+)$/)))              // set_membership pass
+        return { path: prefix + m[1], observed: "∈ " + m[2], expected: "∈ " + m[2] };
+      return null;  // decision_comms multi-part / "any: none (…)" / unknown → verbatim
+    };
+
+    const fnum = (x) => x == null ? "—" : Number(x).toFixed(2);
+
+    // The fact a predicate read: parsed → (path · observed vs expected), else the raw reason.
+    const ReasonFact = ({ reason, tone }) => {
+      const p = parseReason(reason);
+      if (!p) return html`<div className="mt-0.5 font-mono text-[11px] text-zinc-500">${reason || "—"}</div>`;
+      return html`<div className="mt-0.5 flex flex-wrap items-baseline gap-x-2 text-[11px]">
+        <span className="font-mono text-zinc-400">${p.path}</span>
+        <span className="text-zinc-600">·</span>
+        <span className="text-zinc-500">observed</span><span className=${"font-mono " + tone}>${p.observed}</span>
+        <span className="text-zinc-600">·</span>
+        <span className="text-zinc-500">expected</span><span className="font-mono text-zinc-300">${p.expected}</span>
+      </div>`;
+    };
+
+    const GroundedTag = () => html`<span
+      title="reads real world state — grade is earned by changing state, not by claiming it"
+      className="inline-flex items-center rounded border border-emerald-500/30 bg-emerald-500/10 px-1 py-0.5 text-[9px] font-medium uppercase tracking-wide text-emerald-300">state-grounded</span>`;
+
+    // One predicate group (a checkpoint, or the artifacts bucket): math-aligned rows + subtotal.
+    const PredGroup = ({ title, meta, preds, subtotal }) => html`
+      <${Card} className="overflow-hidden">
+        <div className="flex items-baseline gap-2 border-b border-border px-4 py-2">
+          <span className="text-sm font-medium text-fg">${title}</span>
+          ${meta ? html`<span className="font-mono text-[11px] text-zinc-500">${meta}</span>` : null}
+          ${subtotal != null ? html`<span className="ml-auto text-[11px] text-muted">subtotal
+            <span className=${"ml-1 font-semibold tabular-nums " + rewardTone(subtotal)}>${fmtReward(subtotal)}</span></span>` : null}
+        </div>
+        <table className="w-full text-sm">
+          <thead><tr className="text-left text-[11px] text-zinc-500">
+            <th className="py-1.5 pl-4 font-medium">predicate</th>
+            <th className="pr-2 text-right font-medium">weight</th>
+            <th className="pr-2 text-right font-medium">× credit</th>
+            <th className="pr-2 text-right font-medium">= weighted</th>
+            <th className="pr-4 font-medium">status</th></tr></thead>
+          <tbody>
+            ${(preds || []).map((p, i) => {
+              const tone = p.status === "pass" ? "pass" : p.status === "pending" ? "pending" : "fail";
+              return html`<tr key=${i} className="border-t border-border align-top">
+                <td className="py-2 pl-4 pr-2">
+                  <div className="flex items-center gap-2">
+                    <span className="font-mono text-[13px] text-fg">${p.id}</span>
+                    ${p.reads_real_field ? html`<${GroundedTag} />` : null}
+                  </div>
+                  <${ReasonFact} reason=${p.reason} tone=${rewardTone(p.credit)} />
+                </td>
+                <td className="pr-2 text-right tabular-nums text-zinc-400">${fnum(p.weight)}</td>
+                <td className=${"pr-2 text-right tabular-nums " + rewardTone(p.credit)}>${fmtReward(p.credit)}</td>
+                <td className="pr-2 text-right tabular-nums font-medium text-zinc-200">${fmtReward(p.weighted)}</td>
+                <td className="pr-4"><${Badge} tone=${tone}>${p.status}</${Badge}></td>
+              </tr>`;
+            })}
+          </tbody>
+        </table>
+      </${Card}>`;
+
+    const GraderView = ({ run }) => {
+      if (!run) return html`<div className="grid h-full place-items-center text-muted">select a run</div>`;
+      const score = run.score;
+      if (!score) return html`<div className="grid h-full place-items-center px-8 text-center text-sm text-muted">
+        no score — episode did not reach the horizon.</div>`;
+
+      const checkpoints = score.checkpoints || [];
+      const artifacts = score.artifact_results || [];
+      const terms = [...checkpoints.flatMap((c) => c.predicates || []), ...artifacts];
+      const grounded = terms.filter((p) => p.reads_real_field).length;
+
+      return html`
+        <div className="flex flex-col gap-4">
+          <${Card} className="p-4">
+            <div className="flex items-baseline justify-between">
+              <span className="text-sm text-muted">final reward = Σ (weight × credit)</span>
+              <span className=${"text-2xl font-bold tabular-nums " + rewardTone(score.final)}>${fmtReward(score.final)}</span>
+            </div>
+            <div className="mt-1 h-2 w-full overflow-hidden rounded-full bg-zinc-800">
+              <div className=${"h-full " + rewardBar(score.final)} style=${{ width: (100 * (score.final || 0)) + "%" }}></div>
+            </div>
+            <div className="mt-3 flex flex-wrap items-center gap-x-1.5 gap-y-1 font-mono text-[12px]">
+              ${terms.length
+                ? terms.map((p, i) => html`<span key=${i} className="inline-flex items-center gap-1.5">
+                    ${i ? html`<span className="text-zinc-600">+</span>` : null}
+                    <span className=${"rounded px-1.5 py-0.5 " + (p.credit > 0 ? "bg-emerald-500/10 text-emerald-300" : "bg-zinc-800 text-zinc-500")}
+                      title=${p.id}>(${fnum(p.weight)}×${fmtReward(p.credit)})</span>
+                  </span>`)
+                : html`<span className="text-zinc-500">no predicates</span>`}
+              <span className="text-zinc-500">=</span>
+              <span className=${"font-semibold " + rewardTone(score.final)}>${fmtReward(score.final)}</span>
+            </div>
+            <div className="mt-2 text-[11px] text-zinc-500">weights sum = ${fnum(score.weights_sum)} · the final is this weighted sum, not a black-box judgment</div>
+          </${Card}>
+
+          <div className="rounded-md border border-emerald-500/20 bg-emerald-500/5 px-3 py-2 text-[12px] text-zinc-400">
+            <${GroundedTag} /> <span className="ml-1">predicates read real world state (${grounded}/${terms.length}) — credit is earned by changing state, not by the agent claiming it, so the grade resists reward hacking.</span>
+          </div>
+
+          ${checkpoints.map((c) => html`<${PredGroup} key=${c.checkpoint_id}
+            title=${c.checkpoint_id} meta=${"at t=" + c.at} preds=${c.predicates} subtotal=${c.subtotal} />`)}
+          ${artifacts.length ? html`<${PredGroup} title="Artifacts" meta="scored at horizon" preds=${artifacts} />` : null}
+        </div>`;
+    };
+    // ── distribution (cohort stats) ──────────────────────────────────────────────
+    // "How does the agent behave across the distribution, and is a change real or noise."
+    // Cohort-kind view: receives { runs } (full list), groups by runFolder, fetches /api/cohort.
+    const rewardFill = (r) => r == null ? "#52525b" : r >= 0.7 ? "#34d399" : r >= 0.4 ? "#fbbf24" : "#fb7185";
+    const pct = (x) => (100 * x).toFixed(0) + "%";
+
+    // Score-distribution: 10-bin histogram + mean±CI marker line.
+    const RewardHistogram = ({ hist, stats }) => {
+      const max = Math.max(1, ...hist);
+      const lo = stats.ci_low, hi = stats.ci_high, mean = stats.mean;
+      return html`<div>
+        <div className="flex h-32 items-end gap-1">
+          ${hist.map((c, i) => {
+            const mid = (i + 0.5) / hist.length;
+            return html`<div key=${i} className="flex flex-1 flex-col items-center justify-end gap-1"
+                title=${`[${(i/hist.length).toFixed(1)}–${((i+1)/hist.length).toFixed(1)}): ${c}`}>
+              <span className="text-[10px] tabular-nums text-zinc-500">${c || ""}</span>
+              <div className=${"w-full rounded-t " + rewardBar(mid)}
+                style=${{ height: pct(c / max) }}></div>
+            </div>`;
+          })}
+        </div>
+        <div className="mt-1 flex justify-between text-[10px] tabular-nums text-zinc-600">
+          <span>0.0</span><span>reward</span><span>1.0</span>
+        </div>
+        ${mean != null ? html`<div className="relative mt-3 h-1.5 rounded-full bg-zinc-800">
+          <div className="absolute top-0 h-full rounded-full bg-accent/40"
+            style=${{ left: pct(lo), width: pct(Math.max(0, hi - lo)) }}></div>
+          <div className="absolute top-1/2 h-3 w-0.5 -translate-y-1/2 bg-fg" style=${{ left: pct(mean) }}></div>
+        </div>` : null}
+      </div>`;
+    };
+
+    // Per-archetype means with CI — a gain is only credible when the CIs separate.
+    const ArchetypeTable = ({ rows }) => {
+      if (!rows.length) return html`<div className="text-sm text-muted">no archetypes</div>`;
+      return html`<table className="w-full text-sm">
+        <thead><tr className="text-left text-[11px] text-muted">
+          <th className="py-1 font-medium">archetype</th><th className="text-right font-medium">n</th>
+          <th className="text-right font-medium">reward mean ± 95% CI</th></tr></thead>
+        <tbody>${rows.map((r, i) => html`<tr key=${i} className="border-t border-border">
+          <td className="py-1.5 pr-2 font-mono text-[13px]">${r.archetype}</td>
+          <td className="text-right tabular-nums text-zinc-400">${r.n}</td>
+          <td className=${"text-right tabular-nums " + rewardTone(r.reward_mean)}>
+            ${fmtReward(r.reward_mean)}
+            <span className="text-zinc-500"> ±${fmtReward(((r.reward_ci_high ?? 0) - (r.reward_ci_low ?? 0)) / 2)}</span>
+          </td></tr>`)}</tbody>
+      </table>`;
+    };
+
+    // Funnel: pass-rate bar per predicate id (drop-off across checkpoints).
+    const CheckpointFunnel = ({ preds }) => {
+      if (!preds.length) return html`<div className="text-sm text-muted">no checkpoints</div>`;
+      return html`<div className="flex flex-col gap-1.5">
+        ${preds.map((p, i) => html`<div key=${i} className="flex items-center gap-2">
+          <span className="w-40 shrink-0 truncate font-mono text-[11px] text-zinc-400" title=${p.id}>${p.id}</span>
+          <div className="relative h-4 flex-1 overflow-hidden rounded bg-zinc-800">
+            <div className=${"h-full " + rewardBar(p.pass_rate)} style=${{ width: pct(p.pass_rate) }}></div>
+          </div>
+          <span className="w-20 shrink-0 text-right tabular-nums text-[11px] text-zinc-400">
+            ${pct(p.pass_rate)} <span className="text-zinc-600">${p.pass}/${p.n}</span></span>
+        </div>`)}
+      </div>`;
+    };
+
+    // Run × checkpoint pass/fail grid.
+    const CheckpointHeatmap = ({ heatmap, preds }) => {
+      const ids = preds.map((p) => p.id);
+      if (!heatmap.length || !ids.length) return null;
+      return html`<div className="mt-3 overflow-x-auto">
+        <div className="text-[11px] font-medium uppercase tracking-wide text-zinc-500">run × checkpoint</div>
+        <table className="mt-1 border-separate" style=${{ borderSpacing: "2px" }}>
+          <tbody>${heatmap.map((row, i) => html`<tr key=${i}>
+            <td className="pr-2 font-mono text-[10px] text-zinc-500" title=${row.run_id}>${runLeaf(row.run_id)}</td>
+            ${ids.map((id) => {
+              const v = row.results[id];
+              const cls = v == null ? "bg-zinc-800" : v ? "bg-emerald-500/70" : "bg-rose-500/60";
+              return html`<td key=${id} title=${id + ": " + (v == null ? "n/a" : v ? "pass" : "fail")}
+                className=${"h-4 w-4 rounded-sm " + cls}></td>`;
+            })}
+          </tr>`)}</tbody>
+        </table>
+      </div>`;
+    };
+
+    // Reward-hack scatter: x=messages, y=real state deltas, color=reward.
+    const RewardHackScatter = ({ points }) => {
+      if (!points.length) return html`<div className="text-sm text-muted">no runs</div>`;
+      const W = 460, H = 260, pad = 34;
+      const maxX = Math.max(1, ...points.map((p) => p.n_messages));
+      const maxY = Math.max(1, ...points.map((p) => p.n_real_deltas));
+      const sx = (v) => pad + (v / maxX) * (W - 2 * pad);
+      const sy = (v) => H - pad - (v / maxY) * (H - 2 * pad);
+      return html`<svg viewBox=${`0 0 ${W} ${H}`} className="w-full" style=${{ maxWidth: W }}>
+        <line x1=${pad} y1=${H - pad} x2=${W - pad} y2=${H - pad} stroke="#3f3f46" />
+        <line x1=${pad} y1=${pad} x2=${pad} y2=${H - pad} stroke="#3f3f46" />
+        <text x=${W / 2} y=${H - 6} textAnchor="middle" fill="#71717a" fontSize="11">messages sent →</text>
+        <text x=${12} y=${H / 2} textAnchor="middle" fill="#71717a" fontSize="11"
+          transform=${`rotate(-90 12 ${H / 2})`}>real state deltas →</text>
+        ${points.map((p, i) => html`<circle key=${i} cx=${sx(p.n_messages)} cy=${sy(p.n_real_deltas)}
+          r="5" fill=${rewardFill(p.reward)} fillOpacity="0.85" stroke="#18181b" strokeWidth="0.5">
+          <title>${runLeaf(p.run_id)} · msgs=${p.n_messages} · deltas=${p.n_real_deltas} · reward=${fmtReward(p.reward)}</title>
+        </circle>`)}
+      </svg>`;
+    };
+
+    const SectionCard = ({ title, hint, children }) => html`<${Card} className="p-4">
+      <div className="mb-3">
+        <div className="text-sm font-medium text-fg">${title}</div>
+        ${hint ? html`<div className="mt-0.5 text-[11px] text-zinc-500">${hint}</div>` : null}
+      </div>
+      ${children}
+    </${Card}>`;
+
+    const DistributionView = ({ runs }) => {
+      const groups = {};
+      for (const r of runs) (groups[runFolder(r.run_id)] ||= []).push(r);
+      const folders = Object.keys(groups).sort((a, b) => groups[b].length - groups[a].length);
+      const [folder, setFolder] = useState(null);
+      const [data, setData] = useState(null);
+      useEffect(() => { if (!folder && folders.length) setFolder(folders[0]); }, [runs]);
+      useEffect(() => {
+        if (!folder) return;
+        setData(null);
+        api("/inspector/api/cohort?folder=" + encodeURIComponent(folder)).then(setData);
+      }, [folder]);
+
+      if (!folders.length) return html`<div className="grid h-full place-items-center text-muted">no runs found</div>`;
+
+      const sel = html`<div className="flex items-center gap-2">
+        <span className="text-xs text-muted">cohort</span>
+        <select value=${folder || ""} onChange=${(e) => setFolder(e.target.value)}
+          className="rounded-md border border-border bg-card px-2 py-1 text-sm text-fg">
+          ${folders.map((f) => html`<option key=${f} value=${f}>${f === "(root)" ? "runs (root)" : f} (${groups[f].length})</option>`)}
+        </select>
+      </div>`;
+
+      if (!data) return html`<div className="flex flex-col gap-4">${sel}
+        <div className="grid place-items-center py-20 text-muted">loading cohort…</div></div>`;
+      if (!data.n) return html`<div className="flex flex-col gap-4">${sel}
+        <${Card} className="grid place-items-center p-10 text-sm text-muted">no runs in this cohort</${Card}></div>`;
+
+      const preds = data.checkpoints.per_id;
+      return html`<div className="flex h-full min-h-0 flex-col gap-4">
+        <div className="flex items-center justify-between">${sel}
+          <span className="text-xs text-muted">n=${data.n} runs</span></div>
+        <div className="grid min-h-0 flex-1 grid-cols-2 gap-4 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+          <${SectionCard} title="Score distribution"
+            hint=${`mean ${fmtReward(data.mean)} ± ${fmtReward(((data.ci_high ?? 0) - (data.ci_low ?? 0)) / 2)} · 95% CI · min ${fmtReward(data.min)} · max ${fmtReward(data.max)} · n=${data.rewards.length}`}>
+            <${RewardHistogram} hist=${data.reward_hist} stats=${data} />
+          </${SectionCard}>
+          <${SectionCard} title="Per-archetype"
+            hint="a gain is only credible when the CIs separate — overlapping intervals are noise">
+            <${ArchetypeTable} rows=${data.per_archetype} />
+          </${SectionCard}>
+          <${SectionCard} title="Checkpoint funnel + heatmap"
+            hint="pass-rate per predicate (drop-off), then per-run pass/fail cells">
+            <${CheckpointFunnel} preds=${preds} />
+            <${CheckpointHeatmap} heatmap=${data.checkpoints.heatmap} preds=${preds} />
+          </${SectionCard}>
+          <${SectionCard} title="Reward-hack scatter"
+            hint="busy-but-ineffective zone: many messages, ~0 real deltas, low reward = gaming activity, not outcomes">
+            <${RewardHackScatter} points=${data.scatter} />
+          </${SectionCard}>
+        </div>
+      </div>`;
+    };
+
+    // ── tool taxonomy ────────────────────────────────────────────────────────────
+    // Plug in a real tool with ONE edit: swap its `View` here.
+    //   run-kind   → View gets { run } (the fetched /inspector/api/runs/<id> detail).
+    //   cohort-kind→ View gets { runs } (full list); no per-run sidebar is shown.
+    const TOOLS = [
+      { id: "inspector",    label: "Inspector",    kind: "run",    View: RunView },
+      { id: "timeline",     label: "Timeline",     kind: "run",    View: Timeline },
+      { id: "grader",       label: "Grader",       kind: "run",    View: GraderView },
+      { id: "distribution", label: "Distribution", kind: "cohort", View: DistributionView },
+    ];
+
+    // ── left rail (tool switcher) ────────────────────────────────────────────────
+    const ToolRail = ({ active, onTool }) => html`
+      <nav className="flex w-[168px] shrink-0 flex-col gap-1 border-r border-border px-2 py-4">
+        <div className="px-2 pb-2 text-[10px] font-medium uppercase tracking-wide text-zinc-600">tools</div>
+        ${TOOLS.map((t) => html`<button key=${t.id} onClick=${() => onTool(t.id)}
+          className=${"w-full rounded-md px-3 py-2 text-left text-sm transition " +
+            (active === t.id ? "bg-accent/15 text-fg font-medium border border-accent/40"
+                             : "text-muted hover:text-fg hover:bg-zinc-900 border border-transparent")}>${t.label}</button>`)}
+      </nav>`;
+
     // ── app shell ───────────────────────────────────────────────────────────────
     const App = () => {
       const [runs, setRuns] = useState([]);
       const [runsDir, setRunsDir] = useState("");
-      const [selected, setSelected] = useState(null);
+      const [activeTool, setActiveTool] = useState("inspector");
+      const [selectedRun, setSelectedRun] = useState(null);
       const [run, setRun] = useState(null);
+
+      const tool = TOOLS.find((t) => t.id === activeTool) || TOOLS[0];
+      const isRunKind = tool.kind === "run";
 
       useEffect(() => { api("/inspector/api/runs").then((d) => {
         setRuns(d.runs); setRunsDir(d.runs_dir);
-        if (d.runs.length) setSelected(d.runs[0].run_id);
+        if (d.runs.length) setSelectedRun(d.runs[0].run_id);
       }); }, []);
-      useEffect(() => { if (selected) { setRun(null); api("/inspector/api/runs/" + selected).then(setRun); } }, [selected]);
+      // Fetch detail when a run is selected and the active tool consumes a run.
+      useEffect(() => {
+        if (isRunKind && selectedRun) { setRun(null); api("/inspector/api/runs/" + selectedRun).then(setRun); }
+      }, [selectedRun, isRunKind]);
 
+      const View = tool.View;
       return html`
-        <div className="mx-auto flex h-screen w-full max-w-[1400px] flex-col">
-          <header className="flex items-baseline gap-3 border-b border-border px-6 py-3">
-            <h1 className="text-sm font-semibold tracking-tight">saas-world <span className="text-muted">· trajectory inspector</span></h1>
-            <span className="ml-auto font-mono text-[11px] text-zinc-600">${runsDir}</span>
-          </header>
-          <div className="grid min-h-0 flex-1 grid-cols-[300px_1fr] gap-6 overflow-hidden px-6 py-4">
-            <aside className="flex min-w-0 flex-col gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
-              <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">runs · ${runs.length}</div>
-              <${RunList} runs=${runs} selected=${selected} onSelect=${setSelected} />
-            </aside>
-            <main className="min-w-0 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
-              <${RunView} run=${run} />
-            </main>
+        <div className="mx-auto flex h-screen w-full max-w-[1400px]">
+          <${ToolRail} active=${activeTool} onTool=${setActiveTool} />
+          <div className="flex min-w-0 flex-1 flex-col">
+            <header className="flex items-baseline gap-3 border-b border-border px-6 py-3">
+              <h1 className="text-sm font-semibold tracking-tight">saas-world <span className="text-muted">· trajectory inspector</span></h1>
+              <span className="text-xs text-muted">${tool.label}</span>
+              <span className="ml-auto font-mono text-[11px] text-zinc-600">${runsDir}</span>
+            </header>
+            ${isRunKind ? html`
+              <div className="grid min-h-0 flex-1 grid-cols-[300px_1fr] gap-6 overflow-hidden px-6 py-4">
+                <aside className="flex min-w-0 flex-col gap-2 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+                  <div className="text-xs font-medium uppercase tracking-wide text-zinc-500">runs · ${runs.length}</div>
+                  <${RunList} runs=${runs} selected=${selectedRun} onSelect=${setSelectedRun} />
+                </aside>
+                <main className="min-w-0 overflow-y-auto pr-1 [scrollbar-gutter:stable]">
+                  <${View} run=${run} />
+                </main>
+              </div>` : html`
+              <main className="min-h-0 flex-1 overflow-y-auto px-6 py-4 [scrollbar-gutter:stable]">
+                <${View} runs=${runs} />
+              </main>`}
           </div>
         </div>`;
     };

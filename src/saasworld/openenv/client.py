@@ -38,6 +38,10 @@ class SaasWorldEnv:
     def state(self) -> State:
         return State.from_dict(self._get("/state"))
 
+    def trajectory(self) -> dict[str, Any]:
+        """Canonical event log (opening snapshot + events w/ deltas) — for replay/timeline tools."""
+        return self._get("/trajectory")
+
     def health(self) -> bool:
         try:
             return self._get("/health").get("status") == "ok"

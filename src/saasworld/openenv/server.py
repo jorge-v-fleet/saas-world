@@ -48,4 +48,9 @@ def create_env_app(env: SaasWorldEnvironment | None = None) -> FastAPI:
     def state() -> dict[str, Any]:
         return environment.state.to_dict()
 
+    @app.get("/trajectory")
+    def trajectory() -> dict[str, Any]:
+        """Canonical event log (opening snapshot + events w/ deltas) for replay/timeline tools."""
+        return environment.canonical_trajectory()
+
     return app
