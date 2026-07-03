@@ -39,3 +39,22 @@ def freeze(instance: str) -> Payload:
     """Content-hash + provenance-stamp the instance and mark it immutable."""
     result = engine.freeze(instance)
     return Payload({"instance_hash": result.instance_hash, "provenance": result.provenance})
+
+
+def build_set(archetype: str, count: int, start: int, scan_limit: int) -> Payload:
+    """Materialize the first `count` valid seeds >= `start` (skip rejects) + write a manifest."""
+    result = engine.build_set(archetype, count, start, scan_limit)
+    if len(result.seeds) < count:
+        raise CliError(
+            "integrity",
+            f"only {len(result.seeds)}/{count} valid instances in seeds "
+            f"{start}..{result.scanned_through} (scan_limit={scan_limit})",
+        )
+    return Payload({
+        "archetype": result.archetype,
+        "manifest": str(result.manifest_path),
+        "seeds": result.seeds,
+        "dirs": result.dirs,
+        "rejected": result.rejected,
+        "scanned_through": result.scanned_through,
+    })

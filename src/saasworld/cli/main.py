@@ -65,6 +65,18 @@ def freeze(instance: str, json_mode: JsonOpt = False) -> None:
     _emit("freeze", json_mode, lambda: build.freeze(instance))
 
 
+@app.command(name="build-set")
+def build_set(
+    archetype: str,
+    count: Annotated[int, typer.Option("--count", help="Valid instances to materialize.")] = 10,
+    start: Annotated[int, typer.Option("--start", help="First seed to try.")] = 0,
+    scan_limit: Annotated[int, typer.Option("--scan-limit", help="Max seeds to scan.")] = 256,
+    json_mode: JsonOpt = False,
+) -> None:
+    """Materialize the first N valid seeds for an archetype (skip rejects) + write a manifest."""
+    _emit("build-set", json_mode, lambda: build.build_set(archetype, count, start, scan_limit))
+
+
 # ---- runtime --------------------------------------------------------------------------------
 
 @app.command()

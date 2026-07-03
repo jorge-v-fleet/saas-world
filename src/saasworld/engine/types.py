@@ -43,3 +43,15 @@ class FreezeResult:
 
     instance_hash: str
     provenance: dict[str, Any]
+
+
+@dataclass
+class BuildSetResult:
+    """`build_set` output — the materialized valid seeds, their dirs, and the manifest path."""
+
+    archetype: str
+    manifest_path: Path
+    seeds: list[int]
+    dirs: list[str]
+    rejected: int
+    scanned_through: int

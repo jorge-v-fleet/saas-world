@@ -69,7 +69,11 @@ runs/
 *.duckdb.wal
 index.sqlite
 
-# ── Build-time scenario candidates (unfrozen, regenerable from (template, seed)) ──
-# Frozen instances under data/scenarios/ ARE committed (the reviewer loads them and the
-# golden reproduces them); candidates the Seeding Engine emits are disposable scratch.
+# ── Build-time scenario instances (regenerable from (template, seed)) ──
+# Scenarios are generated from data/templates/ at setup time (see README "Build the scenarios").
+# Only the hand-authored example `checkout-not-ready` is committed as a runnable reference;
+# every other instance + the set manifests are build outputs and must NOT be committed.
 data/candidates/
+data/sets/
+data/scenarios/*
+!data/scenarios/checkout-not-ready/

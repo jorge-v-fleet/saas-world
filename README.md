@@ -14,14 +14,22 @@ actions actually **improved outcomes**, not whether it was merely busy. Full bri
 
 ## Quick start
 
-The repo ships pre-built scenarios under `data/scenarios/`, so you just **start the env and drive an
-episode** — no build step, offline and key-free. From a clean checkout:
+The repo ships the scenario **templates** under `data/templates/` plus one hand-authored example
+(`checkout-not-ready`). Every other scenario is **generated from a template at setup time** — offline,
+deterministic, and key-free — so instances stay build artifacts, never committed. From a clean checkout:
 
 ```bash
 # 1 · install
 uv venv && source .venv/bin/activate && uv pip install -e ".[dev]"
 
-# 2 · start the OpenEnv server (single process, localhost:8092)
+# 2 · build the scenarios from templates (offline & deterministic; skips gate-rejected seeds and
+#     writes valid frozen instances into data/scenarios/, which is gitignored — regenerate anytime)
+saasworld build-set delivery-slip  --count 10
+saasworld build-set release-triage --count 8
+#     -> each writes a data/sets/<archetype>.json manifest recording exactly which seeds back the set
+#     (checkout-not-ready ships hand-authored — no build needed)
+
+# 3 · start the OpenEnv server (single process, localhost:8092)
 #     hosts the episode API (/reset, /step, /state) AND the trajectory inspector UI.
 saasworld-env-serve          # or: python -m saasworld.openenv.serve
 #     -> episode API:  http://127.0.0.1:8092
