@@ -188,7 +188,7 @@
 
   "example_binding": {
     "_note": "A concrete draw for illustration. `_seed` reproduces it through sample+bind under the committed substrate.",
-    "_seed": 6,
+    "_seed": 15,
     "blocker.type": "pulled_onto_other_work", "feature.name": "Usage-Based Billing", "critical_project": "feature_x",
     "holder": "org.be_b3", "holder2": "org.fs_b1", "stakeholder": "org.cto", "deadline.offset": "D10T17:00"
   }

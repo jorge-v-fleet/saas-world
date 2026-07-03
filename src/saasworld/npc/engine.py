@@ -11,14 +11,19 @@ from __future__ import annotations
 import logging
 from typing import Any
 
+from ..eval.predicates import holds
 from ..events import Event
 from ..kernel import Kernel
 from ..llm.parser import LLMParser, Persona
 from ..llm.protocols import CacheMiss
+from ..state.store import WorldState
 from .decision import Decision, decide
 
 _DEFAULT_DELAY_MIN = 60
 _FALLBACK_ACK = "Ack."  # deterministic, LLM-free reply used when the parser fails
+_AGENT = "org.pm_a"  # the single PM under test — proactive outreach targets the agent
+_PROACTIVE_CAP = 5  # default per-NPC ceiling on autonomous messages over the horizon
+_MIN_PER_DAY = 24 * 60
 
 logger = logging.getLogger(__name__)
 
@@ -44,6 +49,7 @@ class NPCEngine:
     def __init__(self, parser: Any | None = None) -> None:
         self.npcs: dict[str, dict[str, Any]] = {}
         self._parser = parser
+        self._proactive_count: dict[str, int] = {}  # per-NPC autonomous-message tally
 
     def register_npc(self, config: dict[str, Any]) -> None:
         """Register a runtime config (base persona ⊕ overlay), keyed by its structural org id."""
@@ -60,6 +66,7 @@ class NPCEngine:
 
     def attach(self, kernel: Kernel) -> None:
         kernel.register("npc_reply", self._npc_reply)
+        kernel.register("npc_wakeup", self._npc_wakeup)
         kernel.npc_engine = self  # type: ignore[attr-defined]  # expose registry to send_message
 
     @property
@@ -104,6 +111,46 @@ class NPCEngine:
             applied.append(msg)
         return applied
 
+    def _npc_wakeup(self, kernel: Kernel, event: Event) -> list[dict[str, Any]]:
+        """Autonomous replan: if the persona's goal is unmet, emit a bounded proactive message,
+        then reschedule the next tick. Opt-in per scenario; DEFAULT OFF (loader schedules none)."""
+        payload = event.payload
+        org_id = payload["npc"]
+        npc = self.npcs.get(org_id)
+        if npc is None:
+            return []
+        cadence = npc.get("behavior", {}).get("wakeup_cadence", {})
+        every = int(cadence.get("every_sim_hours", 0)) * 60
+        if every <= 0:
+            return []
+        horizon = int(payload.get("horizon", 0))
+        cap = int(cadence.get("max_proactive", _PROACTIVE_CAP))
+        now = event.sim_time
+
+        # Outside work hours: don't act; slide the tick to the next work-hours start.
+        start = _next_work_start(npc, now)
+        if start > now:
+            if start <= horizon:
+                kernel.schedule(start, org_id, "npc_wakeup", payload, caused_by=event.seq)
+            return []
+
+        # Goal already satisfied by world state (read via view_scope) -> stop chasing.
+        view = WorldState(kernel.state.view(npc.get("view_scope", {})))
+        if _goal_satisfied(cadence, view):
+            return []
+
+        applied: list[dict[str, Any]] = []
+        if self._proactive_count.get(org_id, 0) < cap:
+            msg = _proactive_message(npc, org_id, cadence, event.seq)
+            kernel.state.apply([msg], source=org_id)  # normal messages path, NPC-sourced
+            applied.append(msg)
+            self._proactive_count[org_id] = self._proactive_count.get(org_id, 0) + 1
+
+        nxt = now + every
+        if self._proactive_count.get(org_id, 0) < cap and nxt <= horizon:
+            kernel.schedule(nxt, org_id, "npc_wakeup", payload, caused_by=event.seq)
+        return applied
+
     def _reply_delta(
         self, decision: Decision, persona: Persona, to: str | None, actor: str
     ) -> dict[str, Any] | None:
@@ -137,3 +184,46 @@ class NPCEngine:
                 "refs": decision.reply.get("refs", []),
             },
         }
+
+
+def _hhmm(v: str) -> int:
+    h, _, m = v.partition(":")
+    return int(h) * 60 + int(m)
+
+
+def _next_work_start(npc: dict[str, Any], now: int) -> int:
+    """`now` if within work hours; else the next work-hours start (later today or tomorrow)."""
+    wh = npc.get("behavior", {}).get("work_hours")
+    if not wh:
+        return now  # always-on persona
+    start, end = _hhmm(wh["start"]), _hhmm(wh["end"])
+    tod = now % _MIN_PER_DAY
+    day0 = now - tod
+    if start <= tod < end:
+        return now
+    return day0 + start if tod < start else day0 + _MIN_PER_DAY + start
+
+
+def _goal_satisfied(cadence: dict[str, Any], view: WorldState) -> bool:
+    """Data-driven predicate over the NPC's scoped view. `satisfied_when` is an eval-assert spec
+    (reuses `holds`); absent -> never satisfied, so the NPC keeps chasing (bounded by the cap)."""
+    spec = cadence.get("satisfied_when")
+    return holds(spec, state=view) if spec else False
+
+
+def _proactive_message(
+    npc: dict[str, Any], org_id: str, cadence: dict[str, Any], seq: int
+) -> dict[str, Any]:
+    """A deterministic, LLM-free outreach delta toward the agent (seeded off event seq)."""
+    name = npc.get("identity", {}).get("name", org_id)
+    intent = cadence.get("intent", "ask_status")
+    about = cadence.get("about")
+    return {
+        "op": "append",
+        "path": "messages",
+        "value": {
+            "from": org_id, "to": _AGENT, "intent": intent, "about": about,
+            "kind": "proactive", "proactive_seq": seq,
+            "note": f"{name}: following up — {intent.replace('_', ' ')}",
+        },
+    }

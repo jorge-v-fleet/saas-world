@@ -273,7 +273,7 @@
 
   "example_binding": {
     "_note": "A concrete slot draw, for illustration. `_seed` reproduces it through sample+bind under the committed substrate.",
-    "_seed": 1206,
+    "_seed": 20951,
     "blocker.type": "pci_cert", "blocker.holder": "org.be_b2", "critical_project": "proj.checkout",
     "discovery.hops": 2, "reveal.gate": "ask_direct", "deadline.movable": true,
     "distractor_blockers": 0, "stakeholder": "org.cto", "stakeholder.pressure": "high",

@@ -182,4 +182,23 @@ def load(path: str | Path, kernel: Kernel) -> LoadedScenario:
         kernel.schedule(offset_to_minutes(ev["at"]), ev.get("from", "system"),
                         ev["type"], _timeline_payload(ev))
 
+    _schedule_wakeups(kernel, engine, manifest)
     return LoadedScenario(manifest["id"], version, engine, eval_gt)
+
+
+def _schedule_wakeups(kernel: Kernel, engine: NPCEngine, manifest: dict[str, Any]) -> None:
+    """OPT-IN autonomous NPCs. Only when `autonomous_npcs` is true does an active NPC that declares
+    a wakeup_cadence get its first `npc_wakeup` tick. Absent/false -> nothing scheduled."""
+    if not manifest.get("autonomous_npcs"):
+        return
+    days = manifest.get("time", {}).get("horizon_days")
+    if not days:
+        return
+    horizon = int(days) * _MINUTES_PER_DAY
+    for org_id in manifest.get("activate", []):
+        cadence = engine.npcs.get(org_id, {}).get("behavior", {}).get("wakeup_cadence")
+        if not cadence:
+            continue
+        first = int(cadence.get("every_sim_hours", 0)) * 60  # one cadence in from t0
+        if first > 0 and first <= horizon:
+            kernel.schedule(first, org_id, "npc_wakeup", {"npc": org_id, "horizon": horizon})

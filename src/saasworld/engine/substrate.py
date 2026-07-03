@@ -30,6 +30,10 @@ _TITLE_ROLE = {
     "Fullstack Engineer": "fullstack",
     "SRE / DevOps Engineer": "sre",
     "Product Designer": "designer",
+    "Head of Sales": "sales",
+    "Account Executive": "sales",
+    "Customer Support Manager": "cs",
+    "CS Support": "cs",
 }
 
 

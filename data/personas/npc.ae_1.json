@@ -1,0 +1,19 @@
+{
+  "id": "npc.ae_1",
+  "org_ref": "org.ae_1",
+  "tier": "active",
+  "_note": "BASE pack. Account Executive owning the live deal; the on-the-ground voice of the customer's demands. goals / knowledge_scope come from each scenario overlay.",
+  "identity": { "name": "Jenna Cole", "title": "Account Executive", "reports_to": "org.head_sales" },
+  "voice": "Fast-moving and persuasive; relays the customer's asks with deadline urgency and revenue framing.",
+  "allowed_intents": ["greet","ask_status","apply_pressure","request_commit","share_context","escalate","acknowledge","smalltalk"],
+  "view_scope": {
+    "people": ["org.head_sales","org.pm_a","org.cto","org.cs_1"],
+    "projects": ["*deal"],
+    "channels": ["chan.sales*","chan.deal*"]
+  },
+  "behavior": {
+    "work_hours": { "start": "08:00", "end": "19:00" },
+    "response_delay": { "dist": "lognormal", "min_min": 5, "mode_min": 25, "max_min": 100 },
+    "wakeup_cadence": { "every_sim_hours": 6, "action": "replan_against_goals" }
+  }
+}

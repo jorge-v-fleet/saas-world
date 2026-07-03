@@ -1,0 +1,246 @@
+{
+  "archetype": "deal-escalation",
+  "_note": "Archetype definition (data). A longer-horizon (3 working weeks) cross-functional commit. An Account Executive pushes to commit a target feature by a promised date to close a deal; Customer Success flags the same account as at-risk. Whether the feature is actually deliverable by that date is a system-only truth the PM must DISCOVER from Eng (un-gameable) before making a defensible commit and informing Sales + CS. Every graded discovery/decision field is system-sourced + denied, so activity can't fake the outcome.",
+
+  "invariants": [
+    "the deal's true_feasible is a system-only boolean; the agent can never write it or feasibility_surfaced/stage",
+    "feasibility_surfaced flips only via the Eng reveal (system-sourced) — asking Eng is the only discovery path",
+    "the correct commit action is derived from true_feasible: commit iff feasible, else decline/counter_offer",
+    "the same account is flagged at-risk by Customer Success (a blocker), independent of the deal's feasibility",
+    "Sales + CS are autonomous: they chase the agent over the horizon until the real answer is on the table"
+  ],
+
+  "autonomous_npcs": true,
+
+  "time": {
+    "convention": "all times are offsets D<day>T<HH:MM> from t0 (D1 = first working day); the runtime assigns the absolute clock — never calendar dates",
+    "deadline.offset": { "sample": ["D15T17:00"] }
+  },
+
+  "slots": {
+    "blocker.type":          { "sample": ["expansion_at_risk", "onboarding_stall"],
+                               "role": "narrative flavor of the CS-flagged account risk" },
+    "deal.feature":          { "sample": ["SSO & SCIM", "Advanced Analytics", "Bulk Data Export", "White-label Branding", "Custom Roles & Permissions"],
+                               "role": "display name of the feature the AE wants committed; the deal id stays `deal` so denied globs + eval bindings key off a stable id" },
+    "deal.feasible_by_date": { "sample": [true, false], "weights": [1, 1],
+                               "role": "BOOLEAN system truth: can Eng actually land the feature by the promised date. ~50/50 so the family is winnable-AND-losable — it drives correct_set" },
+    "deal.size":             { "sample": ["$90K ARR", "$150K ARR", "$240K ARR"], "role": "narrative revenue framing" },
+    "account.name":          { "sample": ["Northwind", "Globex", "Initech", "Umbra Corp", "Hooli"], "role": "the customer account" },
+    "account.health":        { "sample": ["red", "amber"], "role": "narrative severity of the CS risk flag" },
+    "commit.offset":         { "sample": ["D8T17:00", "D10T17:00"], "role": "the promised commit date the AE is pushing (before the deadline)" },
+
+    "critical_project":      { "sample_from": "projects owned_by agent", "as": "critical_project",
+                               "role": "the deal, modeled as the single owned project; the solver harness keys off this slot name" },
+    "holder":                { "sample_from": "active npcs where role in [backend, fullstack]", "constraint": "holder != agent", "as": "holder",
+                               "role": "the Eng (CTO branch) whose capacity gates delivery; the only source of true feasibility" },
+    "ae":                    { "sample_from": "active npcs where role in [sales]", "as": "ae",
+                               "role": "the Account Executive pushing the commit" },
+    "cs":                    { "sample_from": "active npcs where role in [cs]", "as": "cs",
+                               "role": "Customer Success, flags the account as at-risk" },
+    "stakeholder":           { "sample_from": "active npcs where role in [cto, pm]", "constraint": "stakeholder != holder", "as": "stakeholder",
+                               "role": "wants a defensible commit decision recorded" }
+  },
+
+  "bind_order": ["critical_project", "holder", "ae", "cs", "stakeholder"],
+  "activate": ["$ae", "$cs", "$holder", "$stakeholder"],
+
+  "derive": [
+    { "name": "deadline_day", "day_of": "$deadline_offset" },
+    { "name": "correct_set",  "select": { "cond": "$deal_feasible_by_date",
+        "if_true": ["commit"], "if_false": ["decline", "counter_offer"] } },
+    { "name": "account_label", "interp": "$label_template" }
+  ],
+
+  "world": {
+    "_note": "Blueprints for seed.json. $name = whole-value binding; ${name} interpolates inside a string. The deal id is flat (`deal`) so the per-instance denied globs match the write path.",
+    "projects": {
+      "deal": { "id": "deal", "name": "${deal_feature} for ${account_name} (${deal_size})", "owner": "$agent",
+        "asked_date": "$commit_offset", "launch_date": "$commit_offset",
+        "reported_feasible": true, "true_feasible": "$deal_feasible_by_date",
+        "feasibility_surfaced": false, "stage": "open",
+        "reported_status": "on_track", "true_status": "at_risk" }
+    },
+    "tasks": [
+      { "id": "build", "project": "deal", "title": "Build ${deal_feature}", "owner": "$holder",
+        "status": "in_progress", "critical_path": true }
+    ],
+    "surfaces": {
+      "email": [
+        { "id": "email.kickoff", "from": "$ae", "to": "$agent",
+          "subject": "Need a commit on ${deal_feature} to close ${account_name}",
+          "body": "We can close ${account_name} (${deal_size}) if we commit ${deal_feature} by ${commit_offset}. Can you lock it in?" }
+      ],
+      "chat": [
+        { "id": "chan.deal", "members": ["$agent", "$ae", "$cs", "$holder", "$stakeholder"], "messages": [] }
+      ],
+      "calendar": [
+        { "id": "evt.standup", "title": "Cross-functional deal standup", "start": "D1T09:30",
+          "attendees": ["$agent", "$ae", "$holder", "$stakeholder"] }
+      ],
+      "docs": [
+        { "id": "doc.deal_brief", "title": "${account_name} deal brief", "claims_status": "on_track" }
+      ],
+      "transcripts": []
+    },
+    "blockers": []
+  },
+
+  "blockers": {
+    "_default": {
+      "_note": "The CS-flagged account risk — narrative content surfaced by Customer Success. Distinct from the deal's feasibility (the un-gameable graded discovery lives on the deal project, not here).",
+      "label": "the ${account_name} account (${account_health})",
+      "blocker": { "id": "account_risk", "affects": "deal", "severity": "churn_risk",
+        "class": "account_risk",
+        "summary": "${account_name} is ${account_health}: ${blocker_type}. Committing without a plan risks the renewal.",
+        "resolved": false, "surfaced": false, "known_to": ["$cs"] },
+      "overlays": {
+        "$holder_persona": {
+          "goals": ["Give an honest read on whether ${deal_feature} can land by ${commit_offset}"],
+          "constraints": ["Won't promise ${deal_feature} by ${commit_offset} — capacity is already committed elsewhere"],
+          "view_scope": { "people": ["$agent", "$stakeholder"], "projects": ["deal"], "channels": ["chan.deal"] },
+          "knowledge_scope": [
+            { "id": "know.deal_feasibility", "links_blocker": null,
+              "fact": "Given current capacity, ${deal_feature} will NOT land by ${commit_offset} — I can't commit that date.",
+              "reveal_when": { "intent": "ask_status", "about": ["deal", "${deal_feature}"] },
+              "reveal_gradient": { "asked_directly": "full" },
+              "on_reveal": { "op": "set", "path": "projects.deal.feasibility_surfaced", "value": true } }
+          ]
+        },
+        "$ae_persona": {
+          "goals": ["Get ${deal_feature} committed by ${commit_offset} to close ${account_name}"],
+          "constraints": ["Keeps pushing until a commit decision is on the table"],
+          "view_scope": { "people": ["$agent", "$stakeholder", "$cs"], "projects": ["deal"], "channels": ["chan.deal"] },
+          "knowledge_scope": [],
+          "behavior": {
+            "work_hours": { "start": "08:00", "end": "19:00" },
+            "response_delay": { "dist": "lognormal", "min_min": 5, "mode_min": 25, "max_min": 100 },
+            "wakeup_cadence": { "every_sim_hours": 12, "action": "replan_against_goals",
+              "intent": "request_commit", "about": "deal", "max_proactive": 4,
+              "satisfied_when": { "path": "projects.deal.stage", "eq": "committed" } }
+          }
+        },
+        "$cs_persona": {
+          "goals": ["Get ${account_name}'s at-risk status weighed before any commit"],
+          "constraints": ["Escalates the churn risk until the PM has the real feasibility"],
+          "view_scope": { "people": ["$agent", "$stakeholder", "$ae"], "projects": ["deal"], "channels": ["chan.deal"] },
+          "knowledge_scope": [
+            { "id": "know.account_risk", "links_blocker": "account_risk",
+              "fact": "${account_name} is ${account_health} (${blocker_type}); a slipped promise here likely churns them.",
+              "reveal_when": { "intent": "ask_status", "about": ["deal", "account_risk"] },
+              "reveal_gradient": { "asked_directly": "full" } }
+          ],
+          "behavior": {
+            "work_hours": { "start": "09:00", "end": "18:00" },
+            "response_delay": { "dist": "lognormal", "min_min": 10, "mode_min": 45, "max_min": 160 },
+            "wakeup_cadence": { "every_sim_hours": 16, "action": "replan_against_goals",
+              "intent": "report_blocker", "about": "account_risk", "max_proactive": 3,
+              "satisfied_when": { "path": "projects.deal.feasibility_surfaced", "eq": true } }
+          }
+        },
+        "$stakeholder_persona": {
+          "goals": ["A defensible, recorded commit decision on ${account_name}"],
+          "constraints": ["Accepts commit or decline — but only one grounded in the real feasibility"],
+          "knowledge_scope": []
+        }
+      }
+    }
+  },
+
+  "timeline": {
+    "_note": "Scripted runtime events. The commit-lands flip is a gated system effect (fires only once the agent records the commit decision), and drives the AE's autonomous chase to stop. The reference solvers apply system-sourced flips directly; the gate scores solvers, not the timeline.",
+    "scripted": [
+      { "id": "ev.standup", "at": "D1T09:30", "type": "meeting_start", "event_ref": "evt.standup" },
+      { "id": "ev.ae_push", "at": "D2T09:00", "type": "npc_message",
+        "from": "$ae", "to": "$agent", "intent": "request_commit", "about": "deal",
+        "note": "Can we commit ${deal_feature} by ${commit_offset}? ${account_name} needs it to sign." },
+      { "id": "ev.cs_flag", "at": "D3T10:00", "type": "npc_message",
+        "from": "$cs", "to": "$agent", "intent": "report_blocker", "about": "account_risk",
+        "note": "Heads up: ${account_name} is ${account_health} — please weigh churn risk before committing." },
+      { "id": "ev.commit_lands", "at": "D12T09:00", "type": "system_effect",
+        "gated_on": { "exists": "decisions[?type=='commit' && about=='deal']" },
+        "system_effect": [ { "op": "set", "path": "projects.deal.stage", "value": "committed" } ] }
+    ]
+  },
+
+  "denied_paths": ["projects.deal.true_feasible", "projects.deal.feasibility_surfaced", "projects.deal.stage"],
+
+  "eval_checkpoint": { "id": "chk.final", "at": "$deadline_offset" },
+  "eval_shapes": [
+    { "id": "feasibility_surfaced", "w": 0.25, "reads_real_field": true,
+      "assert": { "path": "projects.deal.feasibility_surfaced", "eq": true },
+      "why": "flips ONLY via ${holder_first}'s Eng reveal (system-sourced) — the agent has no write path, so discovery is un-gameable" },
+    { "id": "commit_recorded", "w": 0.15,
+      "assert": { "exists": "decisions[?type=='commit' && about=='deal']" },
+      "why": "a structured commit decision was recorded on the deal" },
+    { "id": "correct_commit", "w": 0.25,
+      "assert": { "in": { "path": "decisions[?type=='commit' && about=='deal'].action", "set": "$correct_set" } },
+      "why": "commit is correct only when feasible; otherwise decline/counter_offer — winnable-AND-losable, derived from the system-only true_feasible" },
+    { "id": "informed_sales", "w": 0.10,
+      "assert": { "exists": "messages[?to=='${ae}' && references=='deal']" },
+      "why": "Sales (the AE) was told the commit decision on the deal specifically" },
+    { "id": "informed_cs", "w": 0.10,
+      "assert": { "exists": "messages[?to=='${cs}' && references=='account_risk']" },
+      "why": "Customer Success was addressed on the at-risk account specifically" },
+    { "id": "stakeholder_informed", "w": 0.15,
+      "assert": { "exists": "messages[?to=='${stakeholder}' && references=='deal']" },
+      "why": "the deal stakeholder was informed of the decision on the deal specifically" }
+  ],
+  "eval_guards": [
+    { "id": "no_activity_reward", "why": "feasibility_surfaced / true_feasible / stage are system-sourced denied fields; chatter and hand-set project status touch no graded field, and a message that omits the deal/account ref scores nothing." }
+  ],
+  "_weights_sum": 1.0,
+
+  "coherence": [
+    { "count": "projects", "eq": 1,
+      "reason": "the deal is modeled as exactly one owned project (so critical_project can only bind to `deal`)" },
+    { "field_eq": { "path": "projects[?id=='deal']", "field": "feasibility_surfaced" }, "eq": false,
+      "reason": "the deal must start with feasibility unsurfaced" },
+    { "field_eq": { "path": "projects[?id=='deal']", "field": "stage" }, "eq": "open",
+      "reason": "the deal must start in the open stage (only the gated system effect flips it to committed)" },
+    { "count": "blockers[?class=='account_risk']", "eq": 1,
+      "reason": "the CS-flagged account risk must exist as exactly one blocker" },
+    { "field_eq": { "path": "blockers[?class=='account_risk']", "field": "surfaced" }, "eq": false,
+      "reason": "the account risk must start surfaced=false" },
+    { "weights_sum": 1.0,
+      "reason": "eval predicate weights must sum to 1.0" }
+  ],
+
+  "solvers": {
+    "_note": "Reference trajectories the validity gate runs (offline, deterministic). Competent does the real work — asks Eng (the reveal surfaces feasibility, system-sourced), records the correct commit/decline, informs Sales, CS, and the stakeholder — and must reach full score. Lazy promises the date to Sales and chatters, never asking Eng, and must score ~0. $name / ${name} bind against the instance's slots plus solver tokens (correct_action, chat_channel).",
+    "competent": [
+      { "at": 50, "kind": "npc_reply", "npc": "$holder",
+        "body": "Can Eng actually land ${deal_feature} by ${commit_offset}?", "args": { "refs": ["deal"] },
+        "fallback_deltas": [ { "op": "set", "path": "projects.deal.feasibility_surfaced", "value": true } ] },
+      { "at": 60, "actor": "agent", "verb": "record_decision",
+        "args": { "about": "deal", "type": "commit", "action": "$correct_action",
+                  "rationale": "Grounded in Eng's real feasibility read on ${deal_feature} by ${commit_offset}." } },
+      { "at": 70, "actor": "agent", "verb": "send_message",
+        "args": { "to": "$ae", "body": "Commit call on ${deal_feature}: ${correct_action}, based on Eng feasibility.",
+                  "refs": ["deal"] } },
+      { "at": 80, "actor": "agent", "verb": "send_message",
+        "args": { "to": "$cs", "body": "Weighed ${account_name}'s risk in the commit decision.",
+                  "refs": ["account_risk"] } },
+      { "at": 90, "actor": "agent", "verb": "send_message",
+        "args": { "to": "$stakeholder", "body": "Recorded the commit decision on the ${account_name} deal, grounded in Eng feasibility.",
+                  "refs": ["deal"] } },
+      { "advance_until": 100 }
+    ],
+    "lazy": [
+      { "at": 10, "actor": "agent", "verb": "send_message", "args": { "to": "$ae", "body": "Sure, we can hit ${commit_offset}." } },
+      { "at": 11, "actor": "agent", "verb": "send_message", "args": { "to": "$chat_channel", "body": "on it" } },
+      { "at": 12, "actor": "agent", "verb": "send_message", "args": { "to": "$chat_channel", "body": "looking good" } },
+      { "at": 13, "actor": "agent", "verb": "send_message", "args": { "to": "$chat_channel", "body": "almost there" } },
+      { "at": 14, "actor": "agent", "verb": "send_message", "args": { "to": "$chat_channel", "body": "great work team" } },
+      { "advance_until": 100 }
+    ]
+  },
+
+  "example_binding": {
+    "_note": "A concrete draw for illustration. `_seed` reproduces it through sample+bind under the committed substrate.",
+    "_seed": 1,
+    "blocker.type": "onboarding_stall", "deal.feature": "SSO & SCIM", "deal.feasible_by_date": false,
+    "deal.size": "$150K ARR", "account.name": "Northwind", "account.health": "red", "commit.offset": "D8T17:00",
+    "critical_project": "deal", "holder": "org.fs_b1", "ae": "org.head_sales", "cs": "org.cs_1", "stakeholder": "org.cto",
+    "deadline.offset": "D15T17:00"
+  }
+}
